@@ -1,0 +1,4 @@
+sphinx>=8.0
+myst-parser>=4.0
+sphinx-autodoc2>=0.5
+furo>=2024.1

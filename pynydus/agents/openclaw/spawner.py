@@ -1,0 +1,221 @@
+"""OpenClaw spawner connector. Spec §10.3.
+
+Parses an OpenClaw workspace directory containing:
+- SOUL.md / soul.md       -> memory records labeled "persona"
+- IDENTITY.md             -> memory records labeled "persona"
+- AGENTS.md               -> memory records labeled "flow"
+- BOOT.md / HEARTBEAT.md  -> memory records labeled "flow"
+- USER.md                 -> memory records labeled "context"
+- TOOLS.md                -> memory records labeled "context"
+- knowledge.md / MEMORY.md -> memory records labeled "state"
+- memory/YYYY-MM-DD.md    -> memory records labeled "state"
+- skill.md / skills.md / skills/ -> skill records
+- config.yaml / config.json -> secret requirements
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+from pynydus.api.errors import ConnectorError
+from pynydus.api.raw_types import (
+    ParseResult,
+    RawMemory,
+    RawSkill,
+)
+from pynydus.api.schemas import (
+    MemoryLabel,
+    ValidationIssue,
+    ValidationReport,
+)
+from pynydus.pkg.connector_utils import (
+    parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
+    split_paragraphs as _split_paragraphs,
+)
+
+_PERSONA_FILES = ("SOUL.md", "soul.md", "IDENTITY.md")
+_FLOW_FILES = ("AGENTS.md", "agents.md", "BOOT.md", "HEARTBEAT.md")
+_CONTEXT_FILES = ("USER.md", "user.md", "TOOLS.md")
+_STATE_FILES = ("knowledge.md", "MEMORY.md")
+_SKILL_FILES = ("skill.md", "skills.md")
+_CONFIG_FILES = ("config.yaml", "config.yml", "config.json")
+
+FILE_PATTERNS = ["*.md", "*.yaml", "*.yml", "*.json", "*.txt", "skills/*.md", "memory/*.md"]
+"""Glob patterns the pipeline uses to read source files from disk."""
+
+
+class OpenClawSpawner:
+    """Parse OpenClaw workspace directory."""
+
+    FILE_PATTERNS = FILE_PATTERNS
+
+    def detect(self, input_path: Path) -> bool:
+        """Return True if input_path looks like an OpenClaw project."""
+        if not input_path.is_dir():
+            return False
+        has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
+        has_skill = (
+            any((input_path / f).exists() for f in _SKILL_FILES)
+            or (input_path / "skills").is_dir()
+        )
+        return has_persona or has_skill
+
+    def parse(self, files: dict[str, str]) -> ParseResult:
+        """Parse pre-redacted file contents into raw skills and memory.
+
+        Parameters
+        ----------
+        files:
+            Mapping of ``filename -> UTF-8 content`` (already redacted).
+
+        Returns
+        -------
+        ParseResult
+            Skills, memory, and MCP configs extracted from the files.
+        """
+        skills = self._parse_skills(files)
+        memories = self._parse_memories(files)
+        mcp_configs = self._parse_mcp_configs(files)
+        return ParseResult(skills=skills, memory=memories, mcp_configs=mcp_configs)
+
+    def validate(self, input_path: Path) -> ValidationReport:
+        """Validate an OpenClaw source before spawning."""
+        issues: list[ValidationIssue] = []
+        if not input_path.is_dir():
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    message=f"Not a directory: {input_path}",
+                    location=str(input_path),
+                )
+            )
+            return ValidationReport(valid=False, issues=issues)
+
+        has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
+        has_skill = (
+            any((input_path / f).exists() for f in _SKILL_FILES)
+            or (input_path / "skills").is_dir()
+        )
+        if not has_persona and not has_skill:
+            issues.append(
+                ValidationIssue(
+                    level="warning",
+                    message="No SOUL.md/soul.md or skill.md found — Egg will be sparse",
+                    location=str(input_path),
+                )
+            )
+        return ValidationReport(valid=not any(i.level == "error" for i in issues), issues=issues)
+
+    # ------------------------------------------------------------------
+    # Parse helpers (operate on file dict, not filesystem)
+    # ------------------------------------------------------------------
+
+    def _parse_skills(self, files: dict[str, str]) -> list[RawSkill]:
+        """Parse skills from file contents dict."""
+        skills: list[RawSkill] = []
+        for fname in _SKILL_FILES:
+            content = files.get(fname, "")
+            if content:
+                for block in _split_markdown_sections(content):
+                    skills.append(
+                        RawSkill(name=block["name"], content=block["content"], source_file=fname)
+                    )
+        for key, content in sorted(files.items()):
+            if key.startswith("skills/") and key.endswith(".md"):
+                content = content.strip()
+                if content:
+                    stem = key.removeprefix("skills/").removesuffix(".md")
+                    skills.append(
+                        RawSkill(
+                            name=stem.replace("_", " ").replace("-", " "),
+                            content=content,
+                            source_file=key,
+                        )
+                    )
+        return skills
+
+    def _parse_memories(self, files: dict[str, str]) -> list[RawMemory]:
+        """Parse memory from all recognized OpenClaw workspace files."""
+        memories: list[RawMemory] = []
+
+        file_label_map = [
+            (_PERSONA_FILES, MemoryLabel.PERSONA),
+            (_FLOW_FILES, MemoryLabel.FLOW),
+            (_CONTEXT_FILES, MemoryLabel.CONTEXT),
+            (_STATE_FILES, MemoryLabel.STATE),
+        ]
+
+        for filenames, label in file_label_map:
+            for fname in filenames:
+                content = files.get(fname, "").strip()
+                if not content:
+                    continue
+                for para in _split_paragraphs(content):
+                    memories.append(RawMemory(text=para, source_file=fname, label=label))
+
+        for key, content in sorted(files.items()):
+            if not key.startswith("memory/") or not key.endswith(".md"):
+                continue
+            content = content.strip()
+            if not content:
+                continue
+            ts = _extract_date_from_filename(key)
+            for para in _split_paragraphs(content):
+                memories.append(
+                    RawMemory(text=para, source_file=key, label=MemoryLabel.STATE, timestamp=ts)
+                )
+
+        return memories
+
+    @staticmethod
+    def _parse_mcp_configs(files: dict[str, str]) -> dict[str, dict]:
+        return _parse_mcp_configs_from_files(files)
+
+
+# ---------------------------------------------------------------------------
+# Utility functions
+# ---------------------------------------------------------------------------
+
+
+_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+
+def _extract_date_from_filename(name: str) -> datetime | None:
+    """Extract a YYYY-MM-DD date from a filename like ``memory/2026-03-15.md``."""
+    m = _DATE_RE.search(name)
+    if m:
+        try:
+            return datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def _split_markdown_sections(text: str) -> list[dict[str, str]]:
+    """Split markdown into sections by headings. Returns [{name, content}]."""
+    sections: list[dict[str, str]] = []
+    current_name = "default"
+    current_lines: list[str] = []
+
+    for line in text.splitlines():
+        if line.startswith("#"):
+            if current_lines:
+                content = "\n".join(current_lines).strip()
+                if content:
+                    sections.append({"name": current_name, "content": content})
+                current_lines = []
+            current_name = line.lstrip("#").strip()
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        content = "\n".join(current_lines).strip()
+        if content:
+            sections.append({"name": current_name, "content": content})
+
+    if not sections and text.strip():
+        sections.append({"name": "default", "content": text.strip()})
+
+    return sections
