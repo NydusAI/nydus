@@ -1,6 +1,6 @@
 [project]
 name = "pynydus"
-dynamic = ["version"]
+version = "0.0.0"
 description = "Portable state transport for AI agents"
 readme = "README.md"
 authors = [
