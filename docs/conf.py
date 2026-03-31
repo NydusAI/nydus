@@ -3,7 +3,11 @@
 project = "pynydus"
 copyright = "2026, Nydus Contributors"
 author = "Jae Sim"
-release = "0.1.0"
+try:
+    from importlib.metadata import version as _v
+    release = _v("pynydus")
+except Exception:
+    release = "unknown"
 
 extensions = [
     "autodoc2",
