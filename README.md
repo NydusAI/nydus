@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-txt.png" alt="Nydus" width="420">
+  <img src="assets/logo.png" alt="Nydus" width="420">
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
   <a href="#how-it-works">How it works</a> •
   <a href="#cli">CLI</a> •
   <a href="#python-sdk">Python SDK</a> •
-  <a href="#supported-platforms">Platforms</a> •
+  <a href="#supported-platforms">Platforms</a>
 </p>
 
 ---
