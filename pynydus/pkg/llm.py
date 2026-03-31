@@ -11,9 +11,12 @@ Required dependency:
 from __future__ import annotations
 
 import os
+from typing import TypeVar
 
 import instructor
 from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
 
 from pynydus.api.errors import ConfigError
 
@@ -97,7 +100,7 @@ def create_client(tier: LLMTierConfig) -> instructor.Instructor:
 _logger = __import__("logging").getLogger(__name__)
 
 
-def create_completion[T: BaseModel](
+def create_completion(
     tier: LLMTierConfig,
     messages: list[dict[str, str]],
     response_model: type[T],
