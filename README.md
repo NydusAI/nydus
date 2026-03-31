@@ -18,8 +18,7 @@
   <a href="#install">Install</a> •
   <a href="#how-it-works">How it works</a> •
   <a href="#cli">CLI</a> •
-  <a href="#python-sdk">Python SDK</a> •
-  <a href="#supported-platforms">Platforms</a>
+  <a href="#python-sdk">Python SDK</a>
 </p>
 
 ---
