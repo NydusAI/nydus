@@ -20,7 +20,6 @@
   <a href="#cli">CLI</a> •
   <a href="#python-sdk">Python SDK</a> •
   <a href="#supported-platforms">Platforms</a> •
-  <a href="TUTORIAL.md">Tutorial</a>
 </p>
 
 ---
