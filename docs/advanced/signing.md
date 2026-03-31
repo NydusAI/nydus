@@ -11,10 +11,12 @@ nydus keygen
 
 This creates two files in `~/.nydus/keys/`:
 
-- `private.pem`: used to sign Eggs (permissions set to 600, owner-only)
-- `public.pem`: embedded in signed Eggs for verification
+| File | Purpose |
+|------|---------|
+| `private.pem` | Signs Eggs during `nydus spawn` (permissions 600, owner-only) |
+| `public.pem` | Embedded in signed Eggs for verification |
 
-You can also specify a custom directory:
+You can specify a custom directory:
 
 ```bash
 nydus keygen --dir ./my-keys/
@@ -35,7 +37,7 @@ The signing process:
 4. Store the signature in both `manifest.signature` and a separate
    `signature.json` inside the `.egg` archive
 
-The `signature.json` contains:
+The `signature.json` file contains:
 
 ```json
 {
@@ -50,18 +52,20 @@ The `signature.json` contains:
 
 Signature verification happens automatically during `nydus hatch`:
 
-- **Valid signature**: "Signature verified." is printed, hatching proceeds
-- **Invalid signature**: hatching is rejected with an error
-- **Unsigned**: hatching proceeds silently (no warning by default)
+| Scenario | Behavior |
+|----------|----------|
+| Valid signature | "Signature verified." is printed, hatching proceeds |
+| Invalid signature | Hatching is rejected with an error |
+| Unsigned Egg | Hatching proceeds silently |
 
-You can also check signature status with `nydus inspect`:
+Check signature status without hatching:
 
 ```bash
 nydus inspect agent.egg
 ```
 
-The output includes: `signature: valid (Ed25519)`, `signature: INVALID`, or
-`signature: unsigned`.
+The output includes one of: `signature: valid (Ed25519)`, `signature: INVALID`,
+or `signature: unsigned`.
 
 ## SDK usage
 
@@ -69,8 +73,15 @@ The output includes: `signature: valid (Ed25519)`, `signature: INVALID`, or
 from pynydus import Nydus
 
 ny = Nydus()
-egg = ny.spawn()  # reads ./Nydusfile
+egg = ny.spawn()
 
-# Sign the egg when packing
+# Sign during pack (requires private key)
 ny.pack(egg, output="agent.egg", sign=True)
 ```
+
+## Key management tips
+
+- Keep `private.pem` secure. Do not commit it to version control.
+- Distribute `public.pem` to anyone who needs to verify your Eggs.
+- Use `NYDUS_PRIVATE_KEY` environment variable for CI/CD pipelines instead of
+  relying on the default file path.

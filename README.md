@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Nydus" width="420">
+  <img src="https://raw.githubusercontent.com/NydusAI/nydus/main/assets/logo.png" alt="Nydus" width="420">
 </p>
 
 <p align="center">

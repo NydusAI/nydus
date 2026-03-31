@@ -25,7 +25,7 @@ html_theme = "furo"
 html_title = "pynydus"
 html_logo = "_static/logo.png"
 html_theme_options = {
-    "source_repository": "https://github.com/nydus-lang/nydus",
+    "source_repository": "https://github.com/NydusAI/nydus",
     "source_branch": "main",
     "source_directory": "docs/",
 }
