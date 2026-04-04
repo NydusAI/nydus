@@ -56,7 +56,7 @@ pip install pynydus
 
 ### Prerequisites
 
-**Gitleaks** — required for spawning when `REDACT true` (the default) and
+**Gitleaks** is required for spawning when `REDACT true` (the default) and
 `SOURCE` directives are present. Gitleaks scans source files for secrets
 (API keys, tokens, passwords). Install it before running `nydus spawn`:
 
@@ -175,7 +175,7 @@ make test               # both (excludes live LLM)
 make test-live-llm      # requires .env with NYDUS_LLM_TYPE + NYDUS_LLM_API_KEY
 ```
 
-Integration tests require **gitleaks** on `PATH` — see [Prerequisites](#prerequisites).
+Integration tests require **gitleaks** on `PATH` (see [Prerequisites](#prerequisites)).
 
 For live LLM tests, copy `.env.example` to `.env` and fill in your API key. The
 `.env` file is loaded automatically by `pytest-dotenv`.
@@ -198,7 +198,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
 ## Status
 
-Early development — APIs and on-disk formats may change between releases.
+Early development. APIs and on-disk formats may change between releases.
 
 ## License
 

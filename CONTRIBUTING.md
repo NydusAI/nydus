@@ -58,8 +58,8 @@ Tests are organized into three tiers with dedicated Make targets:
 
 Tests use pytest markers defined in `pyproject.toml`:
 
-- **`integration`** — full pipeline tests (spawn -> save -> load -> hatch). These require `gitleaks` installed and exercise real redaction.
-- **`live_llm`** — tests that make real LLM API calls. Requires a `.env` file (loaded automatically via `pytest-dotenv`):
+- **`integration`**: full pipeline tests (spawn -> save -> load -> hatch). These require `gitleaks` installed and exercise real redaction.
+- **`live_llm`**: tests that make real LLM API calls. Requires a `.env` file (loaded automatically via `pytest-dotenv`):
 
 ```bash
 cp .env.example .env
