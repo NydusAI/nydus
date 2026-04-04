@@ -1,11 +1,26 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/NydusAI/nydus/main/assets/logo.png" alt="Nydus" width="420">
+</p>
 
+<p align="center">
+  <strong>Portable state transport for AI agents</strong><br>
+  Transport agent state between any two frameworks without manual migration
+</p>
 
-**Portable state transport for AI agents**  
-Transport agent state between any two frameworks without manual migration
+<p align="center">
+  <a href="https://pypi.org/project/pynydus/"><img src="https://img.shields.io/pypi/v/pynydus?color=blue" alt="PyPI"></a>
+  <a href="https://pypi.org/project/pynydus/"><img src="https://img.shields.io/pypi/pyversions/pynydus" alt="Python"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+  <a href="#status"><img src="https://img.shields.io/badge/status-early%20development-orange" alt="Status"></a>
+</p>
 
-
-
-[Install](#install) • [How it works](#how-it-works) • [CLI](#cli) • [Python SDK](#python-sdk) • [Development](#development)
+<p align="center">
+  <a href="#install">Install</a> •
+  <a href="#how-it-works">How it works</a> •
+  <a href="#cli">CLI</a> •
+  <a href="#python-sdk">Python SDK</a> •
+  <a href="#development">Development</a>
+</p>
 
 ---
 
@@ -177,6 +192,10 @@ API reference is generated with [Sphinx](https://www.sphinx-doc.org/) and
 Open `docs/_build/index.html` after a successful build.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
+
+## Status
+
+Early development — APIs and on-disk formats may change between releases.
 
 ## License
 
