@@ -114,6 +114,11 @@ def make_egg(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _wide_terminal(monkeypatch):
+    monkeypatch.setenv("COLUMNS", "200")
+
+
 @pytest.fixture
 def sample_egg() -> Egg:
     """A basic Egg with 1 skill, 1 memory record — the most common test shape."""

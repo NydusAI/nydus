@@ -1,6 +1,6 @@
 [project]
 name = "pynydus"
-version = "0.5.0"
+version = "0.0.0"
 description = "Portable state transport for AI agents"
 readme = "README.md"
 authors = [
