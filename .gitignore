@@ -12,9 +12,6 @@ build/
 venv/
 .python-version
 
-# uv
-uv.lock
-
 # IDE
 .idea/
 .vscode/
@@ -32,6 +29,7 @@ Thumbs.db
 htmlcov/
 .ruff_cache/
 coverage_html/
+.env
 
 # Docs
 docs/_build/
@@ -40,5 +38,5 @@ docs/apidocs/
 # Eggs (Nydus artifacts — don't commit test eggs)
 *.egg
 
-# Config (contains API keys)
+# Agent project secrets (OpenClaw/Letta source trees), not Nydus global config
 config.json

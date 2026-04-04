@@ -1,31 +1,18 @@
 # API Reference
 
-Python API reference for the `pynydus` package. This section covers the client
-SDK, core data models, spawner/hatcher types, and error hierarchy.
+Auto-generated reference for the PyNydus Python package (`import pynydus`).
 
-All public types are importable from `pynydus` or their respective submodules.
-
-## Package layout
-
-```text
-pynydus/
-  __init__.py         # re-exports Nydus, Egg, MemoryLabel, etc.
-  client/client.py    # Nydus client class
-  api/schemas.py      # Egg, Manifest, records, enums
-  api/raw_types.py    # ParseResult, RenderResult, RawSkill, RawMemory
-  api/errors.py       # Exception hierarchy
-  agents/             # Framework-specific spawners and hatchers
-  engine/             # Pipeline internals (spawn, hatch, pack, validate, diff)
-  pkg/                # Utilities (presidio, LLM, signing, config)
-  cmd/                # CLI (Typer app)
-  remote/             # Nest registry client
-```
+**Curated pages** below highlight the main types. **Full module tree** lists every
+documented submodule (engine, security, agents, LLM, CLI, etc.).
 
 ```{toctree}
 :maxdepth: 2
 
 client
+common
+config
 schemas
 raw_types
 errors
+../apidocs/index
 ```

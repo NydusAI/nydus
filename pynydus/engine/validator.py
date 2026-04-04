@@ -11,23 +11,11 @@ def validate_egg(egg: Egg) -> ValidationReport:
 
     # Check manifest required fields
     if not egg.manifest.nydus_version:
-        issues.append(
-            ValidationIssue(level="error", message="Missing nydus_version in manifest")
-        )
-    if not egg.manifest.source_type:
-        issues.append(
-            ValidationIssue(level="error", message="Missing source_type in manifest")
-        )
-    if not egg.manifest.source_connector:
-        issues.append(
-            ValidationIssue(level="error", message="Missing source_connector in manifest")
-        )
+        issues.append(ValidationIssue(level="error", message="Missing nydus_version in manifest"))
+    if not egg.manifest.agent_type:
+        issues.append(ValidationIssue(level="error", message="Missing agent_type in manifest"))
     if not egg.manifest.included_modules:
-        issues.append(
-            ValidationIssue(
-                level="warning", message="No modules listed in manifest"
-            )
-        )
+        issues.append(ValidationIssue(level="warning", message="No modules listed in manifest"))
     if not egg.manifest.signature:
         issues.append(
             ValidationIssue(
@@ -50,16 +38,12 @@ def validate_egg(egg: Egg) -> ValidationReport:
     # Check skill IDs are unique
     skill_ids = [s.id for s in egg.skills.skills]
     if len(skill_ids) != len(set(skill_ids)):
-        issues.append(
-            ValidationIssue(level="error", message="Duplicate skill IDs found")
-        )
+        issues.append(ValidationIssue(level="error", message="Duplicate skill IDs found"))
 
     # Check memory IDs are unique
     mem_ids = [m.id for m in egg.memory.memory]
     if len(mem_ids) != len(set(mem_ids)):
-        issues.append(
-            ValidationIssue(level="error", message="Duplicate memory IDs found")
-        )
+        issues.append(ValidationIssue(level="error", message="Duplicate memory IDs found"))
 
     # Check skill_ref references resolve to actual skills
     skill_names = {s.name for s in egg.skills.skills}

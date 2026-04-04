@@ -1,55 +1,68 @@
 # Quickstart
 
-This guide walks through the full pynydus workflow: install the package, write
-a Nydusfile, spawn an Egg, inspect it, and hatch it into a different framework.
+Get up and running with PyNydus in six steps.
 
-## Install
+## Core concepts
+
+| Term | Meaning |
+|------|---------|
+| **Egg** | The portable artifact. In memory it is an `Egg` object (manifest + skills + memory + secrets). On disk it is a `.egg` ZIP archive. |
+| **Spawn** | Read source files, redact secrets/PII, parse structure, and package into an Egg. |
+| **Hatch** | Read an Egg, render target files, resolve secrets, and write to disk. |
+| **Nydusfile** | A small DSL file declaring what to spawn: at most one `SOURCE`, `REDACT`, **`EXCLUDE`** (memory buckets), **`REMOVE file`** (source file globs) or merger **`REMOVE`** (with `FROM`), `LABEL`, and merge ops. |
+| **Spawner** | Platform-specific parser under `pynydus/agents/<name>/spawner.py`. Receives pre-redacted file contents and produces a `ParseResult`. |
+| **Hatcher** | Platform-specific renderer under `pynydus/agents/<name>/hatcher.py`. Produces a `RenderResult` (file dict with placeholders). |
+| **Bucket** | One of `skill`, `memory`, `secret`. Top-level module categories in an Egg. |
+
+## Supported platforms
+
+| Platform | Spawn | Hatch |
+|----------|-------|-------|
+| OpenClaw | Yes | Yes |
+| ZeroClaw | Yes | Yes |
+| Letta | Yes | Yes |
+
+## 1. Install
 
 ```bash
 pip install pynydus
 ```
 
-Requires Python 3.10 or later. This installs both the `nydus` CLI and the
-Python SDK.
+Requires Python 3.10+.
 
-Verify the installation:
+### External dependency: gitleaks
+
+Spawning with `REDACT true` (the default) and `SOURCE` directives requires
+[gitleaks](https://github.com/gitleaks/gitleaks) for secret scanning:
 
 ```bash
-nydus --help
+# macOS
+brew install gitleaks
+
+# Linux
+curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_8.21.2_linux_x64.tar.gz \
+  | tar xz -C /usr/local/bin gitleaks
 ```
 
-## Prepare a source agent
+If the binary is not on `$PATH`, set `NYDUS_GITLEAKS_PATH` to its location.
+Hatching does not require gitleaks.
 
-pynydus works with agent directories on disk. For this guide, assume you have
-an OpenClaw agent with the following files:
+**Developers:** Running the full test suite (`make test`) also requires
+gitleaks on `PATH` (or `NYDUS_GITLEAKS_PATH`) — the same prerequisite as spawn
+with redaction. Run `make test-unit` for tests that don't need gitleaks. See
+[CONTRIBUTING.md](https://github.com/NydusAI/nydus/blob/main/nydus/CONTRIBUTING.md)
+for the full development guide.
 
-```text
-my-agent/
-  SOUL.md           # "I am Maya, a customer support agent..."
-  AGENTS.md         # "Always greet users warmly. Escalate billing to a human."
-  USER.md           # "The user prefers email communication."
-  knowledge.md      # "Company returns policy: 30-day window..."
-  skill.md          # "# Order Lookup\nGiven an order ID..."
-  config.yaml       # api_key: sk-abc123...
-```
+## 2. Write a Nydusfile
 
-## Write a Nydusfile
-
-Create a file named `Nydusfile` (no extension) in your working directory. The
-Nydusfile declares which sources to read and what redaction policy to apply:
+Create a `Nydusfile` in your project directory declaring what to spawn:
 
 ```text
 SOURCE openclaw ./my-agent/
-REDACT pii
+REDACT true
 ```
 
-`SOURCE` takes a framework name (`openclaw`, `zeroclaw`, or `letta`) and a path.
-`REDACT pii` enables both credential scanning and PII redaction. See the
-{doc}`nydusfile` reference for the full list of directives.
-
-## Spawn an Egg
-
-Build a portable `.egg` archive from the sources declared in your Nydusfile:
+## 3. Spawn an Egg
 
 **CLI:**
 
@@ -60,89 +73,83 @@ nydus spawn -o agent.egg
 **Python SDK:**
 
 ```python
+from pathlib import Path
 from pynydus import Nydus
 
 ny = Nydus()
 egg = ny.spawn()  # reads ./Nydusfile
-ny.pack(egg, output="agent.egg")
+ny.save(egg, Path("agent.egg"))
 ```
 
-During spawning, the pipeline:
+The spawner reads the sources declared in your Nydusfile, extracts skills,
+memory, and secrets, redacts PII using Presidio, and packages everything into
+a portable `.egg` archive.
 
-1. Scans config files for credentials and replaces them with `{{SECRET_NNN}}` placeholders
-2. Optionally redacts PII (names, emails, phone numbers) into `{{PII_NNN}}` placeholders
-3. Classifies each file into a semantic category: persona, flow, context, or state
-4. Extracts skills from `skill.md` into the Agent Skills format
-5. Packages everything into a ZIP archive with a manifest, memory records, secret records, and skill bundles
+## 4. Inspect the Egg
 
-The important safety property: all redaction happens **before** any content
-parsing. The spawner never sees raw credentials or PII.
-
-## Inspect the Egg
-
-See what is inside the archive:
-
-```bash
-nydus inspect agent.egg
-```
-
-Add `--secrets` to list all placeholder mappings, and `--logs` for the pipeline
-activity log:
+See what's inside:
 
 ```bash
 nydus inspect agent.egg --secrets --logs
 ```
 
-You can also validate the Egg's structural integrity:
+This prints the manifest metadata, module counts (skills, memory, secrets),
+signature status, and optionally a table of all secret placeholders and a
+summary of pipeline log activity.
 
-```bash
-nydus validate agent.egg
-```
+## 5. Hatch into another runtime
 
-## Generate a secrets template
-
-Before hatching, you need to supply real values for the placeholders. Generate
-a starter `.env` file:
-
-```bash
-nydus env agent.egg -o agent.env
-```
-
-This produces a file like:
-
-```text
-SECRET_001=       # api_key (credential)
-```
-
-Fill in the real values for your target environment.
-
-## Hatch into another framework
-
-Deploy the Egg into a different framework. The target is chosen at hatch time,
-not at build time:
+Deploy the Egg into a different framework:
 
 **CLI:**
 
 ```bash
-nydus hatch agent.egg --target letta --secrets agent.env -o ./letta-agent/
+nydus hatch agent.egg --target letta --secrets agent.env
 ```
 
 **Python SDK:**
 
 ```python
-result = ny.hatch(egg, target="letta", secrets="agent.env")
-print(result.output_dir)
+from pynydus.common.enums import AgentType
+
+result = ny.hatch(egg, target=AgentType.LETTA, secrets="agent.env")
 print(result.files_created)
 ```
 
-The hatcher maps labeled memory records into the target's file layout, converts
-skills into the target's tool format, and substitutes secret placeholders from
-the `.env` file. The output directory is a fully formed agent ready to run in
-the target framework.
+The hatcher resolves secret placeholders from the `.env` file, transforms
+skills and memory into the target's native format, and writes the output
+directory.
 
-## Share via Nest
+### How secrets flow
 
-Publish a versioned Egg to the Nest registry so others can pull it:
+Credentials and PII are replaced with placeholders **before** any parsing or
+rendering. Real values are only substituted when hatching with a `.env` file:
+
+```text
+SPAWN:   source files ──[secrets OUT]──→ raw (placeholders) ──[parse]──→ records ──→ egg
+                         ↑                                      ↑
+                    real values replaced                   spawner only sees
+                    with {{SECRET_NNN}}                   redacted content
+
+HATCH:   egg ──→ records ──[render]──→ raw (placeholders) ──[secrets IN]──→ target files
+                             ↑                                  ↑
+                        hatcher only produces              {{SECRET_NNN}} replaced
+                        placeholder'd content              with real values from .env
+```
+
+### Hatch modes
+
+By default, **rebuild** regenerates target files from the structured egg (skills,
+memory, secrets). To replay the redacted `raw/` snapshot instead, use **`--passthrough`**
+on the CLI. That requires the hatch `--target` to match the egg's source type and a
+non-empty `raw/` layer in the archive; otherwise the command fails with a clear error.
+
+In Python, pass `mode="passthrough"` to {py:meth}`~pynydus.client.client.Nydus.hatch` (with
+non-empty `raw_artifacts`).
+
+## 6. Share via Nest
+
+Push your Egg to the Nest registry:
 
 ```bash
 nydus login myuser
@@ -155,36 +162,29 @@ Pull it from another machine:
 nydus pull myuser/my-agent --version 0.1.0 -o agent.egg
 ```
 
-## Multi-source Nydusfile
+## One source per Nydusfile
 
-Nydusfiles support multiple `SOURCE` directives. Combine inputs from different
-frameworks into a single Egg:
+Each Nydusfile may declare **at most one** `SOURCE` line. To work with several
+agent trees, merge them under one directory or maintain separate Nydusfiles.
 
 ```text
 SOURCE openclaw ./my-agent/
-SOURCE letta ./letta-agent/
-REDACT pii
-PURPOSE "multilingual data engineering assistant"
+REDACT true
 ```
-
-Records from all sources are pooled, deduplicated, and merged into one Egg.
-
-## Compare two Eggs
-
-Track how an agent changes over time by diffing two versions:
 
 ```bash
-nydus diff v1.egg v2.egg
+nydus spawn -o agent.egg
 ```
 
-This prints added, removed, and modified records across all modules (manifest,
-skills, memory, secrets).
+See {doc}`nydusfile` for the full DSL reference.
+
+**`EXCLUDE` vs file skipping:** `EXCLUDE` drops structured **memory** by bucket after parse.
+To omit **files** from read/redact/parse under `SOURCE`, use **`REMOVE file <glob>`** (see
+{doc}`nydusfile`). Merger-style **`REMOVE skill …`** applies to a **`FROM`** base egg.
 
 ## Next steps
 
-- {doc}`cli` for the full CLI command reference
-- {doc}`nydusfile` for all Nydusfile directives (FROM, INCLUDE, EXCLUDE, LABEL, and more)
-- {doc}`api/index` for Python SDK and data model reference
-- {doc}`advanced/signing` for Egg signing and verification
-- {doc}`advanced/nest` for registry operations
-- {doc}`advanced/connectors` for adding support for a new framework
+- {doc}`cli`: CLI reference
+- {doc}`api/index`: Python SDK reference
+- {doc}`nydusfile`: full Nydusfile DSL reference
+- {doc}`advanced/connectors`: add support for a new framework

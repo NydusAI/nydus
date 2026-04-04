@@ -15,19 +15,17 @@ All 4 MemoryLabel values have explicit file mappings.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import (
     Egg,
     HatchResult,
-    MemoryLabel,
-    SecretKind,
     ValidationIssue,
     ValidationReport,
 )
-from pynydus.pkg.connector_utils import skill_to_filename as _skill_to_filename
+from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
+from pynydus.common.enums import MemoryLabel, SecretKind
 
 
 class ZeroClawHatcher:
@@ -43,30 +41,22 @@ class ZeroClawHatcher:
         warnings: list[str] = []
 
         # --- persona.md (persona memory) ---
-        persona_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.PERSONA
-        ]
+        persona_records = [m for m in egg.memory.memory if m.label == MemoryLabel.PERSONA]
         if persona_records:
             files["persona.md"] = "\n\n".join(r.text for r in persona_records) + "\n"
 
         # --- agents.md (flow memory) ---
-        flow_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.FLOW
-        ]
+        flow_records = [m for m in egg.memory.memory if m.label == MemoryLabel.FLOW]
         if flow_records:
             files["agents.md"] = "\n\n".join(r.text for r in flow_records) + "\n"
 
         # --- user.md (context memory) ---
-        context_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.CONTEXT
-        ]
+        context_records = [m for m in egg.memory.memory if m.label == MemoryLabel.CONTEXT]
         if context_records:
             files["user.md"] = "\n\n".join(r.text for r in context_records) + "\n"
 
         # --- knowledge.md (state memory) ---
-        state_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.STATE
-        ]
+        state_records = [m for m in egg.memory.memory if m.label == MemoryLabel.STATE]
         if state_records:
             files["knowledge.md"] = "\n\n".join(r.text for r in state_records) + "\n"
 
@@ -77,9 +67,7 @@ class ZeroClawHatcher:
                 files[f"tools/{fname}"] = skill.content + "\n"
 
         # --- config.json (credential placeholders) ---
-        credentials = [
-            s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL
-        ]
+        credentials = [s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL]
         if credentials:
             config = {s.name: s.placeholder for s in credentials}
             files["config.json"] = json.dumps(config, indent=2) + "\n"
@@ -95,33 +83,6 @@ class ZeroClawHatcher:
             raise HatchError("Egg produced no output files for ZeroClaw target")
 
         return RenderResult(files=files, warnings=warnings)
-
-    def hatch(self, egg: Egg, output_dir: Path) -> HatchResult:
-        """Generate ZeroClaw project files from an Egg.
-
-        .. deprecated::
-            Use :meth:`render` instead. The pipeline now handles disk I/O.
-        """
-        result = self.render(egg)
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        files_created: list[str] = []
-        for fname, content in result.files.items():
-            fpath = output_dir / fname
-            fpath.parent.mkdir(parents=True, exist_ok=True)
-            fpath.write_text(content)
-            files_created.append(fname)
-
-        # .zeroclaw marker
-        marker = output_dir / ".zeroclaw"
-        marker.mkdir(exist_ok=True)
-
-        return HatchResult(
-            target="zeroclaw",
-            output_dir=output_dir,
-            files_created=files_created,
-            warnings=list(result.warnings),
-        )
 
     def validate(self, result: HatchResult) -> ValidationReport:
         """Validate generated ZeroClaw output."""

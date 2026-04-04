@@ -42,14 +42,16 @@ from pynydus.api.raw_types import (
     RawSkill,
 )
 from pynydus.api.schemas import (
-    MemoryLabel,
     ValidationIssue,
     ValidationReport,
 )
-from pynydus.pkg.connector_utils import (
+from pynydus.common.connector_utils import (
     parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
+)
+from pynydus.common.connector_utils import (
     split_paragraphs as _split_paragraphs,
 )
+from pynydus.common.enums import MemoryLabel
 
 _PERSONA_FILES = ("SOUL.md", "persona.md", "IDENTITY.md")
 _FLOW_FILES = ("AGENTS.md", "agents.md", "instructions.md", "system_prompt.md", "HEARTBEAT.md")
@@ -65,8 +67,14 @@ _CATEGORY_LABEL_MAP: dict[str, MemoryLabel] = {
 }
 
 FILE_PATTERNS = [
-    "*.md", "*.yaml", "*.yml", "*.json", "*.txt", "*.toml",
-    "tools/*.py", "memory/*.md",
+    "*.md",
+    "*.yaml",
+    "*.yml",
+    "*.json",
+    "*.txt",
+    "*.toml",
+    "tools/*.py",
+    "memory/*.md",
 ]
 """Glob patterns the pipeline uses to read source files from disk."""
 
@@ -91,26 +99,26 @@ class ZeroClawSpawner:
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Parse pre-redacted file contents into raw skills and memory.
 
-        Parameters
-        ----------
-        files:
-            Mapping of ``filename -> UTF-8 content`` (already redacted).
+        Args:
+            files: ``filename -> UTF-8 content`` (already redacted).
 
-        Returns
-        -------
-        ParseResult
-            Skills, memory, and MCP configs extracted from the files.
+        Returns:
+            Skills, memory, MCP configs, and source metadata.
         """
         skills = self._parse_skills(files)
         memories = self._parse_memories(files)
         mcp_configs = self._parse_mcp_configs(files)
         source_metadata = self._parse_source_metadata(files)
         return ParseResult(
-            skills=skills, memory=memories,
-            mcp_configs=mcp_configs, source_metadata=source_metadata,
+            skills=skills,
+            memory=memories,
+            mcp_configs=mcp_configs,
+            source_metadata=source_metadata,
         )
 
-    def parse_db(self, db_path: Path, supplemental_files: dict[str, str] | None = None) -> ParseResult:
+    def parse_db(
+        self, db_path: Path, supplemental_files: dict[str, str] | None = None
+    ) -> ParseResult:
         """Parse memory entries from a ZeroClaw memory.db SQLite database.
 
         ZeroClaw stores MemoryEntry records with category fields
@@ -147,12 +155,14 @@ class ZeroClawSpawner:
                     category = str(row_dict.get("category", row_dict.get("type", ""))).lower()
                     label = _CATEGORY_LABEL_MAP.get(category, MemoryLabel.STATE)
                     ts = _extract_timestamp_from_row(row_dict)
-                    memories.append(RawMemory(
-                        text=text.strip(),
-                        source_file=f"memory.db.{category or 'unknown'}",
-                        label=label,
-                        timestamp=ts,
-                    ))
+                    memories.append(
+                        RawMemory(
+                            text=text.strip(),
+                            source_file=f"memory.db.{category or 'unknown'}",
+                            label=label,
+                            timestamp=ts,
+                        )
+                    )
         finally:
             conn.close()
 
@@ -190,9 +200,7 @@ class ZeroClawSpawner:
                     location=str(input_path),
                 )
             )
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues), issues=issues
-        )
+        return ValidationReport(valid=not any(i.level == "error" for i in issues), issues=issues)
 
     # ------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)
@@ -251,9 +259,7 @@ class ZeroClawSpawner:
                 if not content:
                     continue
                 for para in _split_paragraphs(content):
-                    memories.append(
-                        RawMemory(text=para, source_file=fname, label=label)
-                    )
+                    memories.append(RawMemory(text=para, source_file=fname, label=label))
 
         identity = files.get("identity.json", "")
         if identity:
@@ -261,16 +267,25 @@ class ZeroClawSpawner:
                 data = json.loads(identity)
                 if isinstance(data, dict):
                     text_parts = []
-                    for field in ("name", "description", "personality", "vibe", "backstory", "role"):
+                    for field in (
+                        "name",
+                        "description",
+                        "personality",
+                        "vibe",
+                        "backstory",
+                        "role",
+                    ):
                         val = data.get(field)
                         if val and isinstance(val, str):
                             text_parts.append(val.strip())
                     if text_parts:
-                        memories.append(RawMemory(
-                            text="\n\n".join(text_parts),
-                            source_file="identity.json",
-                            label=MemoryLabel.PERSONA,
-                        ))
+                        memories.append(
+                            RawMemory(
+                                text="\n\n".join(text_parts),
+                                source_file="identity.json",
+                                label=MemoryLabel.PERSONA,
+                            )
+                        )
             except json.JSONDecodeError:
                 pass
 

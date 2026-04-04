@@ -1,7 +1,7 @@
 # Nest Registry
 
 Nest is the registry service for publishing and pulling Eggs, analogous to
-Docker Hub for container images or npm for JavaScript packages.
+Docker Hub for Docker images.
 
 ## Authentication
 
@@ -13,7 +13,7 @@ nydus login myuser
 ```
 
 Credentials (JWT tokens) are stored at `~/.nydus/credentials.json` and
-automatically included in subsequent push/pull requests.
+automatically included in push/pull requests.
 
 Log out to remove stored credentials:
 
@@ -21,19 +21,18 @@ Log out to remove stored credentials:
 nydus logout
 ```
 
-## Publishing an Egg
+## Push
 
-Push a local Egg to the registry with a name and version:
+Publish a local Egg to the registry:
 
 ```bash
 nydus push agent.egg --name myuser/my-agent --version 0.1.0
 ```
 
 The Egg is uploaded with its SHA-256 checksum recorded server-side. Duplicate
-`name:version` pairs are rejected (409 Conflict). Increment the version for
-each new release.
+name:version pairs are rejected (409 Conflict).
 
-## Pulling an Egg
+## Pull
 
 Download an Egg from the registry:
 
@@ -42,52 +41,35 @@ nydus pull myuser/my-agent --version 0.1.0 -o agent.egg
 ```
 
 The downloaded file is verified against the server's SHA-256 checksum. If the
-hashes do not match, the file is deleted and an error is raised.
+hashes don't match, the file is deleted and an error is raised.
 
-## Listing versions
+## List versions
 
-Use the SDK to list all published versions of an Egg:
-
-```python
-from pynydus import Nydus
-
+```bash
+# Via SDK
 ny = Nydus()
 versions = ny.list_versions("myuser/my-agent")
-for v in versions:
-    print(v["version"], v["created_at"], v["size"])
 ```
 
-Each entry contains: `name`, `version`, `sha256`, `size`, `author`, and
-`created_at`.
+Returns a list of version info dicts (name, version, sha256, size, author,
+created_at).
 
 ## Configuration
 
-The registry URL is configured in `config.json`:
-
-```json
-{
-  "registry": {
-    "url": "https://nest.nydus.tech",
-    "author": "myuser"
-  }
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `url` | Yes | Nest registry endpoint |
-| `author` | No | Default author name for pushes |
+Set **`NYDUS_REGISTRY_URL`** to the Nest base URL (required for push/pull and
+registry `FROM` resolution). Optionally set **`NYDUS_REGISTRY_AUTHOR`** for a
+default push author. See {doc}`../configuration`.
 
 ## Nydusfile integration
 
-The `FROM` directive can reference Eggs in the registry by name and version:
+The FROM directive can reference Eggs in the registry:
 
 ```text
-FROM nydus/openclaw:0.2.0
+FROM nydus/openclaw:0.3.0
 ```
 
 During spawning, the pipeline resolves registry references (`name:version`
-format) by pulling from the configured Nest endpoint. Local file paths
+format) by pulling from the configured Nest registry. Local file paths
 (e.g., `FROM ./base.egg`) are resolved relative to the Nydusfile directory.
 
 ## SDK usage

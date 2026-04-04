@@ -5,14 +5,13 @@ An .egg file is a zip archive with the canonical directory layout::
     manifest.json
     signature.json           (optional — Ed25519 signature over modules)
     spawn_log.json           (structured spawn pipeline log)
-    nydus.json               (per-skill ID/source_type mapping)
+    nydus.json               (per-skill ID/agent_type mapping)
     apm.yml                  (APM compatibility manifest)
     skills/<slug>/SKILL.md   (Agent Skills format — agentskills.io)
     mcp/<server>.json        (MCP server configs — modelcontextprotocol.io)
     memory.json
     secrets.json
     raw/...
-    attachments/...
     Nydusfile                (optional — copy of spawn DSL)
 """
 
@@ -71,7 +70,7 @@ def _sign_if_key(
     if private_key is None:
         return None
 
-    from pynydus.pkg.signing import sign_egg_content
+    from pynydus.security.signing import sign_egg_content
 
     return sign_egg_content(private_key, content_parts)
 
@@ -84,7 +83,7 @@ def _sign_if_key(
 def _write_skills_to_zip(zf: zipfile.ZipFile, skills: SkillsModule) -> bytes:
     """Write each skill as ``skills/<slug>/SKILL.md``.
 
-    Also writes ``nydus.json`` (per-skill ID/source_type mapping) and
+    Also writes ``nydus.json`` (per-skill ID/agent_type mapping) and
     MCP server configs to ``mcp/<server>.json``.
 
     Returns the concatenated bytes of all SKILL.md files (sorted by slug)
@@ -109,7 +108,7 @@ def _write_skills_to_zip(zf: zipfile.ZipFile, skills: SkillsModule) -> bytes:
         md_bytes = md_text.encode("utf-8")
         zf.writestr(f"{SKILLS_PREFIX}{slug}/SKILL.md", md_bytes)
 
-        nydus_meta[slug] = {"id": skill.id, "source_type": skill.source_type}
+        nydus_meta[slug] = {"id": skill.id, "agent_type": skill.agent_type}
         parts.append((slug, md_bytes))
 
     if nydus_meta:
@@ -160,9 +159,13 @@ def _read_skills_from_zip(zf: zipfile.ZipFile) -> SkillsModule:
             agent_skill = parse_skill_md(skill_mds[slug])
             meta = nydus_meta.get(slug, {})
             skill_id = meta.get("id", f"skill_{i:03d}")
-            source_type = meta.get("source_type", agent_skill.metadata.get("source_framework", "unknown"))
+            agent_type = meta.get(
+                "agent_type", agent_skill.metadata.get("source_framework", "unknown")
+            )
             record_dict = agent_skill_to_skill_record(
-                agent_skill, skill_id=skill_id, source_type=source_type,
+                agent_skill,
+                skill_id=skill_id,
+                agent_type=agent_type,
             )
             skills.append(SkillRecord(**record_dict))
         return SkillsModule(skills=skills, mcp_configs=mcp_configs)
@@ -171,7 +174,7 @@ def _read_skills_from_zip(zf: zipfile.ZipFile) -> SkillsModule:
 
 
 # ---------------------------------------------------------------------------
-# Pack / unpack
+# Save / load
 # ---------------------------------------------------------------------------
 
 
@@ -199,7 +202,7 @@ def _build_apm_yml(egg: Egg) -> str:
     doc: dict[str, Any] = {
         "name": egg.manifest.source_metadata.get("namespace", "nydus/agent"),
         "version": egg.manifest.egg_version,
-        "source_type": egg.manifest.source_type.value,
+        "agent_type": egg.manifest.agent_type.value,
     }
     if skills_list:
         doc["skills"] = skills_list
@@ -209,10 +212,13 @@ def _build_apm_yml(egg: Egg) -> str:
     return _yaml.dump(doc, default_flow_style=False, sort_keys=False)
 
 
-def pack(
+def _write_egg_archive(
     egg: Egg,
     output_path: Path,
+    raw_artifacts: dict[str, str] | None = None,
+    spawn_log: list[dict] | None = None,
     *,
+    nydusfile_text: str | None = None,
     private_key: Ed25519PrivateKey | None = None,
 ) -> Path:
     """Write an Egg to a .egg archive (zip-based)."""
@@ -231,57 +237,9 @@ def pack(
         zf.writestr(MEMORY_ENTRY, memory_bytes)
         zf.writestr(SECRETS_ENTRY, secrets_bytes)
 
-        if egg.raw_dir and egg.raw_dir.is_dir():
-            for fpath in egg.raw_dir.rglob("*"):
-                if fpath.is_file():
-                    arcname = f"{RAW_PREFIX}{fpath.relative_to(egg.raw_dir)}"
-                    zf.write(fpath, arcname)
-
-        zf.writestr(SPAWN_LOG_ENTRY, "[]")
-        zf.writestr(APM_ENTRY, _build_apm_yml(egg))
-
-        sig_data = _sign_if_key(
-            private_key,
-            [manifest_bytes, skills_bytes, memory_bytes, secrets_bytes],
-        )
-        if sig_data:
-            egg.manifest.signature = sig_data["signature"]
-            zf.writestr(MANIFEST_ENTRY, egg.manifest.model_dump_json(indent=2))
-            zf.writestr(SIGNATURE_ENTRY, json.dumps(sig_data, indent=2))
-        else:
-            egg.manifest.signature = old_sig
-            zf.writestr(MANIFEST_ENTRY, egg.manifest.model_dump_json(indent=2))
-
-    return output_path
-
-
-def pack_with_raw(
-    egg: Egg,
-    output_path: Path,
-    raw_artifacts: dict[str, str],
-    spawn_log: list[dict] | None = None,
-    *,
-    nydusfile_text: str | None = None,
-    private_key: Ed25519PrivateKey | None = None,
-) -> Path:
-    """Pack an Egg with raw artifacts provided as a dict."""
-    output_path = output_path.with_suffix(".egg")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    old_sig = egg.manifest.signature
-    egg.manifest.signature = ""
-    manifest_bytes = egg.manifest.model_dump_json(indent=2).encode()
-    memory_bytes = egg.memory.model_dump_json(indent=2).encode()
-    secrets_bytes = egg.secrets.model_dump_json(indent=2).encode()
-
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        skills_bytes = _write_skills_to_zip(zf, egg.skills)
-
-        zf.writestr(MEMORY_ENTRY, memory_bytes)
-        zf.writestr(SECRETS_ENTRY, secrets_bytes)
-
-        for name, content in raw_artifacts.items():
-            zf.writestr(f"{RAW_PREFIX}{name}", content)
+        if raw_artifacts:
+            for name, content in raw_artifacts.items():
+                zf.writestr(f"{RAW_PREFIX}{name}", content)
 
         if nydusfile_text:
             zf.writestr(EMBEDDED_NYDUSFILE_NAME, nydusfile_text)
@@ -307,8 +265,35 @@ def pack_with_raw(
     return output_path
 
 
-def unpack(egg_path: Path) -> Egg:
-    """Read a .egg archive and return an Egg object."""
+def save(
+    egg: Egg,
+    output_path: Path,
+    *,
+    raw_artifacts: dict[str, str] | None = None,
+    spawn_log: list[dict] | None = None,
+    nydusfile_text: str | None = None,
+    private_key: Ed25519PrivateKey | None = None,
+) -> Path:
+    """Write an Egg to a ``.egg`` file, including ``raw/`` and ``spawn_log.json``.
+
+    Uses ``egg.raw_artifacts``, ``egg.spawn_log``, and ``egg.nydusfile`` when
+    the corresponding keyword arguments are omitted.
+    """
+    ra = egg.raw_artifacts if raw_artifacts is None else raw_artifacts
+    sl = egg.spawn_log if spawn_log is None else spawn_log
+    nf = egg.nydusfile if nydusfile_text is None else nydusfile_text
+    return _write_egg_archive(
+        egg,
+        output_path,
+        ra,
+        sl,
+        nydusfile_text=nf,
+        private_key=private_key,
+    )
+
+
+def _unpack_egg_core(egg_path: Path) -> Egg:
+    """Load manifest, skills, memory, and secrets from an archive (no ``raw/`` or logs)."""
     if not egg_path.exists():
         raise EggError(f"Egg file not found: {egg_path}")
 
@@ -329,13 +314,39 @@ def unpack(egg_path: Path) -> Egg:
     )
 
 
+def read_spawn_log_list(egg_path: Path) -> list[dict]:
+    """Return the spawn pipeline log as a list (same as ``spawn_log.json`` body)."""
+    blob = read_logs(egg_path).get(SPAWN_LOG_ENTRY)
+    if blob is None:
+        return []
+    if isinstance(blob, list):
+        return blob
+    return []
+
+
+def load(egg_path: Path, *, include_raw: bool = True) -> Egg:
+    """Load a fully populated :class:`~pynydus.api.schemas.Egg` from a ``.egg`` archive.
+
+    Includes ``spawn_log.json`` as ``spawn_log`` and embedded ``Nydusfile`` text when
+    present. When ``include_raw`` is ``True`` (default), ``raw/`` entries are read into
+    ``raw_artifacts``. Set ``include_raw=False`` to skip loading ``raw/`` (empty dict) and
+    reduce memory use for large archives; use :func:`read_raw_artifacts` when you need
+    ``raw/`` for passthrough hatch or inspection.
+    """
+    egg = _unpack_egg_core(egg_path)
+    raw = read_raw_artifacts(egg_path) if include_raw else {}
+    sl = read_spawn_log_list(egg_path)
+    nf = read_nydusfile(egg_path)
+    return egg.model_copy(update={"raw_artifacts": raw, "spawn_log": sl, "nydusfile": nf})
+
+
 def read_raw_artifacts(egg_path: Path) -> dict[str, str]:
     """Read raw/ artifacts from an Egg archive."""
     artifacts: dict[str, str] = {}
     with zipfile.ZipFile(egg_path, "r") as zf:
         for name in zf.namelist():
             if name.startswith(RAW_PREFIX) and not name.endswith("/"):
-                key = name[len(RAW_PREFIX):]
+                key = name[len(RAW_PREFIX) :]
                 artifacts[key] = zf.read(name).decode("utf-8")
     return artifacts
 
@@ -393,7 +404,7 @@ def verify_egg_archive(egg_path: Path) -> bool | None:
     if sig_data is None:
         return None
 
-    from pynydus.pkg.signing import verify_egg_content
+    from pynydus.security.signing import verify_egg_content
 
     with zipfile.ZipFile(egg_path, "r") as zf:
         try:

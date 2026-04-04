@@ -6,18 +6,50 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from pynydus.api.schemas import (
     Egg,
+    HatchResult,
     Manifest,
-    MemoryLabel,
     MemoryModule,
     MemoryRecord,
     SkillRecord,
     SkillsModule,
-    SourceType,
 )
-from pynydus.pkg.llm import LLMTierConfig, NydusLLMConfig
+from pynydus.common.enums import AgentType, Bucket, MemoryLabel
+from pynydus.llm import LLMTierConfig
+
+# ---------------------------------------------------------------------------
+# Hatch-to-disk helper (shared by hatcher tests)
+# ---------------------------------------------------------------------------
+
+
+def _hatch_to_disk(hatcher, egg: Egg, output_dir: Path) -> HatchResult:
+    """Render an Egg via *hatcher* and write the files to *output_dir*.
+
+    Returns a :class:`HatchResult` with the created file list.
+    """
+    result = hatcher.render(egg)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    files_created: list[str] = []
+    for fname, content in result.files.items():
+        fpath = output_dir / fname
+        fpath.parent.mkdir(parents=True, exist_ok=True)
+        fpath.write_text(content)
+        files_created.append(fname)
+
+    return HatchResult(
+        target=egg.manifest.agent_type,
+        output_dir=output_dir,
+        files_created=files_created,
+        warnings=list(result.warnings),
+    )
+
+
+@pytest.fixture
+def hatch_to_disk():
+    """Fixture providing a render-and-write helper for per-agent hatcher tests."""
+    return _hatch_to_disk
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +59,7 @@ from pynydus.pkg.llm import LLMTierConfig, NydusLLMConfig
 
 def make_egg(
     *,
-    source_type: SourceType = SourceType.OPENCLAW,
+    agent_type: AgentType = AgentType.OPENCLAW,
     included_modules: list[str] | None = None,
     skills: list[SkillRecord] | None = None,
     memory: list[MemoryRecord] | None = None,
@@ -40,14 +72,14 @@ def make_egg(
     Extra *manifest_kw* are forwarded to :class:`Manifest`.
     """
     if included_modules is None:
-        included_modules = ["skills", "memory"]
+        included_modules = [Bucket.SKILL, Bucket.MEMORY]
 
     if skills is None:
         skills = [
             SkillRecord(
                 id="skill_001",
                 name="test",
-                source_type="markdown_skill",
+                agent_type="markdown_skill",
                 content="Test skill.",
             )
         ]
@@ -58,7 +90,7 @@ def make_egg(
                 id="mem_001",
                 text="A fact.",
                 label=MemoryLabel.STATE,
-                source_framework="openclaw",
+                agent_type="openclaw",
                 source_store="knowledge.md",
             )
         ]
@@ -68,7 +100,7 @@ def make_egg(
     return Egg(
         manifest=Manifest(
             nydus_version=nydus_version,
-            source_type=source_type,
+            agent_type=agent_type,
             included_modules=included_modules,
             **manifest_kw,
         ),
@@ -91,16 +123,14 @@ def sample_egg() -> Egg:
 @pytest.fixture
 def minimal_egg() -> Egg:
     """An Egg with only a manifest and empty modules."""
-    return make_egg(skills=[], memory=[], included_modules=["skills", "memory"])
+    return make_egg(skills=[], memory=[], included_modules=[Bucket.SKILL, Bucket.MEMORY])
 
 
 @pytest.fixture
 def openclaw_project(tmp_path: Path) -> Path:
     """Create a minimal OpenClaw project directory."""
     (tmp_path / "soul.md").write_text(
-        "I am a research assistant.\n\n"
-        "I prefer concise summaries.\n\n"
-        "Contact: alex@example.com\n"
+        "I am a research assistant.\n\nI prefer concise summaries.\n\nContact: alex@example.com\n"
     )
     (tmp_path / "knowledge.md").write_text(
         "# Domain Knowledge\n\n"
@@ -114,23 +144,16 @@ def openclaw_project(tmp_path: Path) -> Path:
         "Process CSV data and generate statistical summaries.\n"
     )
     (tmp_path / "config.json").write_text(
-        '{"api_key": "sk-secret-key-123", "model": "gpt-4"}\n'
+        '{"aws_access_key_id": "AKIAYRWSSQ3BPTB4DX7Z", "model": "gpt-4"}\n'
     )
     return tmp_path
 
 
 @pytest.fixture
-def llm_config() -> NydusLLMConfig:
-    """A two-tier LLM config for tests that need refinement."""
-    return NydusLLMConfig(
-        simple=LLMTierConfig(
-            provider="anthropic",
-            model="claude-haiku-4-5-20251001",
-            api_key="sk-ant-test",
-        ),
-        complex=LLMTierConfig(
-            provider="openai",
-            model="gpt-4o",
-            api_key="sk-openai-test",
-        ),
+def llm_config() -> LLMTierConfig:
+    """LLM tier for tests that need refinement."""
+    return LLMTierConfig(
+        provider="anthropic",
+        model="claude-haiku-4-5-20251001",
+        api_key="sk-ant-test",
     )

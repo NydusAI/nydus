@@ -1,10 +1,10 @@
 """LLM refinement for spawning and hatching pipelines.
 
-Spawning (Phase 7): ``refine_skills`` / ``refine_memory`` use the simple
+Spawning (Phase 7): ``refine_skills`` / ``refine_memory`` use the configured
 LLM tier to deduplicate memory records and normalize skill formatting.
 The LLM always operates on already-redacted content.
 
-Hatching (Phase 5): ``refine_hatch`` uses the complex LLM tier to adapt
+Hatching (Phase 4): ``refine_hatch`` uses the same tier to adapt or polish
 reconstructed files for the target platform's conventions.
 """
 
@@ -18,13 +18,13 @@ from pydantic import BaseModel, Field
 from pynydus.api.schemas import (
     Egg,
     EggPartial,
-    MemoryLabel,
     MemoryModule,
     MemoryRecord,
     SkillRecord,
     SkillsModule,
 )
-from pynydus.pkg.llm import NydusLLMConfig, create_completion
+from pynydus.common.enums import AgentType, MemoryLabel
+from pynydus.llm import LLMTierConfig, create_completion
 
 logger = logging.getLogger(__name__)
 
@@ -178,32 +178,29 @@ Polishing rules:
 
 def refine_skills(
     skills: SkillsModule,
-    config: NydusLLMConfig,
+    llm_config: LLMTierConfig,
     spawn_log: list[dict] | None = None,
 ) -> SkillsModule:
     """Standalone skill refinement — delegates to _refine_skills via EggPartial."""
     from pynydus.api.schemas import MemoryModule
 
     partial = EggPartial(skills=skills, memory=MemoryModule(), spawn_log=spawn_log or [])
-    partial = _refine_skills(partial, config)
+    partial = _refine_skills(partial, llm_config)
     return partial.skills
 
 
 def refine_memory(
     memory: MemoryModule,
-    config: NydusLLMConfig,
+    llm_config: LLMTierConfig,
     spawn_log: list[dict] | None = None,
 ) -> MemoryModule:
     """Standalone memory refinement — delegates to _refine_memory via EggPartial."""
     partial = EggPartial(skills=SkillsModule(), memory=memory, spawn_log=spawn_log or [])
-    partial = _refine_memory(partial, config)
+    partial = _refine_memory(partial, llm_config)
     return partial.memory
 
 
-
-def _refine_memory(
-    partial: EggPartial, config: NydusLLMConfig
-) -> EggPartial:
+def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial:
     """Deduplicate and summarize memory records via LLM."""
     records = partial.memory.memory
     lookup: dict[str, MemoryRecord] = {r.id: r for r in records}
@@ -228,7 +225,7 @@ def _refine_memory(
     ]
 
     result = create_completion(
-        config.simple,
+        llm_config,
         messages=messages,
         response_model=RefinedMemoryOutput,
         log=partial.spawn_log,
@@ -274,9 +271,7 @@ def _refine_memory(
     return partial
 
 
-def _refine_skills(
-    partial: EggPartial, config: NydusLLMConfig
-) -> EggPartial:
+def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial:
     """Clean up skill names and formatting via LLM."""
     skills = partial.skills.skills
     lookup: dict[str, SkillRecord] = {s.id: s for s in skills}
@@ -301,7 +296,7 @@ def _refine_skills(
     ]
 
     result = create_completion(
-        config.simple,
+        llm_config,
         messages=messages,
         response_model=RefinedSkillsOutput,
         log=partial.spawn_log,
@@ -351,7 +346,14 @@ def _summarize_spawn_log(spawn_log: list[dict]) -> str:
 
     parts: list[str] = []
 
-    # Redactions
+    # Secret scan (gitleaks) — before PII in the pipeline
+    secret_scans = by_type.get("secret_scan", [])
+    if secret_scans:
+        tools = Counter(e.get("tool", "gitleaks") for e in secret_scans)
+        detail = ", ".join(f"{n} via {t}" for t, n in tools.most_common())
+        parts.append(f"- {len(secret_scans)} secret detections ({detail})")
+
+    # PII redactions (Presidio)
     redactions = by_type.get("redaction", [])
     if redactions:
         pii_counts = Counter(e.get("pii_type", "unknown") for e in redactions)
@@ -362,7 +364,7 @@ def _summarize_spawn_log(spawn_log: list[dict]) -> str:
     classifications = by_type.get("classification", [])
     if classifications:
         label_counts = Counter(e.get("label", "unknown") for e in classifications)
-        detail = ", ".join(f"{n} {l}" for l, n in label_counts.most_common())
+        detail = ", ".join(f"{n} {lbl}" for lbl, n in label_counts.most_common())
         parts.append(f"- {len(classifications)} auto-classifications ({detail})")
 
     # Extractions
@@ -387,18 +389,18 @@ def _summarize_spawn_log(spawn_log: list[dict]) -> str:
 def refine_hatch(
     file_dict: dict[str, str],
     egg: Egg,
-    config: NydusLLMConfig,
+    llm_config: LLMTierConfig,
     *,
     log: list[dict] | None = None,
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Phase 5: LLM refinement during hatching.
+    """Phase 4: LLM refinement during hatching.
 
     Operates on a file dict (filename -> content) and returns the
     updated dict.  No disk I/O — the pipeline handles writing.
 
-    Uses the complex tier to adapt or polish reconstructed files for the
+    Uses the configured LLM tier to adapt or polish reconstructed files for the
     target platform's conventions.
 
     If the LLM call fails, the original file dict is returned unchanged.
@@ -406,9 +408,9 @@ def refine_hatch(
     if not file_dict:
         return file_dict
 
-    source_type = egg.manifest.source_type.value
+    source_type = egg.manifest.agent_type
     target_type = _infer_target_type(file_dict)
-    same_platform = source_type == target_type
+    same_platform = target_type is not None and source_type == target_type
 
     file_listing = ""
     for path, content in file_dict.items():
@@ -442,7 +444,7 @@ def refine_hatch(
                 f"  - {s.placeholder}: {s.kind.value}, {s.name}"
                 + (f" — {s.description}" if s.description else "")
             )
-        secrets_block = "Secrets in this egg:\n" + "\n".join(secret_lines) + "\n\n"
+        secrets_block = "Redaction placeholders in this egg:\n" + "\n".join(secret_lines) + "\n\n"
 
     action_verb = "Polish" if same_platform else "Adapt"
 
@@ -464,7 +466,7 @@ def refine_hatch(
     ]
 
     llm_result = create_completion(
-        config.complex,
+        llm_config,
         messages=messages,
         response_model=AdaptedFilesOutput,
         log=log,
@@ -487,15 +489,15 @@ def refine_hatch(
     return result
 
 
-def _infer_target_type(file_dict: dict[str, str]) -> str:
+def _infer_target_type(file_dict: dict[str, str]) -> AgentType | None:
     """Best-effort infer the target platform from file names."""
     filenames = set(file_dict)
     if "agent_state.json" in filenames:
-        return "letta"
+        return AgentType.LETTA
     if "soul.md" in filenames:
-        return "openclaw"
+        return AgentType.OPENCLAW
     if "persona.md" in filenames:
-        return "zeroclaw"
+        return AgentType.ZEROCLAW
     if "agents.md" in filenames:
-        return "openclaw"
-    return "unknown"
+        return AgentType.OPENCLAW
+    return None

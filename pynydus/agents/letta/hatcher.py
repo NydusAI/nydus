@@ -16,19 +16,17 @@ All 4 MemoryLabel values have explicit mappings:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import (
     Egg,
     HatchResult,
-    MemoryLabel,
-    SecretKind,
     ValidationIssue,
     ValidationReport,
 )
-from pynydus.pkg.connector_utils import skill_to_filename as _skill_to_filename
+from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
+from pynydus.common.enums import MemoryLabel, SecretKind
 
 _LABEL_TO_BLOCK: dict[MemoryLabel, str] = {
     MemoryLabel.PERSONA: "persona",
@@ -54,9 +52,7 @@ class LettaHatcher:
         files["agent_state.json"] = json.dumps(agent_state, indent=2) + "\n"
 
         # --- system_prompt.md ---
-        system_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.FLOW
-        ]
+        system_records = [m for m in egg.memory.memory if m.label == MemoryLabel.FLOW]
         if system_records:
             files["system_prompt.md"] = "\n\n".join(r.text for r in system_records) + "\n"
 
@@ -67,9 +63,7 @@ class LettaHatcher:
                 files[f"tools/{fname}"] = skill.content + "\n"
 
         # --- archival_memory.json (state) ---
-        state_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.STATE
-        ]
+        state_records = [m for m in egg.memory.memory if m.label == MemoryLabel.STATE]
         if state_records:
             entries = []
             for rec in state_records:
@@ -79,9 +73,7 @@ class LettaHatcher:
             files["archival_memory.json"] = json.dumps(entries, indent=2) + "\n"
 
         # --- .letta/config.json (credential placeholders) ---
-        credentials = [
-            s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL
-        ]
+        credentials = [s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL]
         if credentials:
             config = {s.name: s.placeholder for s in credentials}
             files[".letta/config.json"] = json.dumps(config, indent=2) + "\n"
@@ -90,29 +82,6 @@ class LettaHatcher:
             raise HatchError("Egg produced no output files for Letta target")
 
         return RenderResult(files=files, warnings=warnings)
-
-    def hatch(self, egg: Egg, output_dir: Path) -> HatchResult:
-        """Generate Letta project files from an Egg.
-
-        .. deprecated::
-            Use :meth:`render` instead. The pipeline now handles disk I/O.
-        """
-        result = self.render(egg)
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        files_created: list[str] = []
-        for fname, content in result.files.items():
-            fpath = output_dir / fname
-            fpath.parent.mkdir(parents=True, exist_ok=True)
-            fpath.write_text(content)
-            files_created.append(fname)
-
-        return HatchResult(
-            target="letta",
-            output_dir=output_dir,
-            files_created=files_created,
-            warnings=list(result.warnings),
-        )
 
     def validate(self, result: HatchResult) -> ValidationReport:
         """Validate generated Letta output."""
@@ -195,21 +164,21 @@ class LettaHatcher:
                         "limit": 5000,
                     }
 
-        flow_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.FLOW
-        ]
+        flow_records = [m for m in egg.memory.memory if m.label == MemoryLabel.FLOW]
         if flow_records:
             state["system"] = "\n\n".join(r.text for r in flow_records)
 
         for skill in egg.skills.skills:
-            state["tools"].append({
-                "name": _skill_to_module_name(skill.name),
-                "source_code": skill.content,
-            })
+            state["tools"].append(
+                {
+                    "name": _skill_to_module_name(skill.name),
+                    "source_code": skill.content,
+                }
+            )
 
         if egg.manifest.source_metadata:
             state["metadata"] = {
-                "nydus_source": egg.manifest.source_connector,
+                "nydus_source": egg.manifest.agent_type.value,
                 "nydus_version": egg.manifest.nydus_version,
             }
 

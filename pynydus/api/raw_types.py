@@ -1,8 +1,8 @@
 """Data types for spawner/hatcher interfaces and the pipeline.
 
-- ``ParseResult`` — output of ``spawner.parse()``, structured records from redacted files.
-- ``RenderResult`` — output of ``hatcher.render()``, target file contents with placeholders.
-- ``RawSkill`` / ``RawMemory`` — individual records within ParseResult.
+``ParseResult`` is produced by ``spawner.parse()`` from redacted files.
+``RenderResult`` is produced by ``hatcher.render()`` with placeholders intact.
+``RawSkill`` and ``RawMemory`` are row-level records inside ``ParseResult``.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from pynydus.api.schemas import MemoryLabel
+from pynydus.common.enums import MemoryLabel
 
 
 class RawSkill(BaseModel):
@@ -33,7 +33,6 @@ class RawMemory(BaseModel):
     """Optional timestamp from source data."""
     skill_ref: str | None = None
     """Optional reference to a skill name this memory is associated with."""
-
 
 
 class ParseResult(BaseModel):
@@ -61,5 +60,3 @@ class RenderResult(BaseModel):
     files: dict[str, str] = Field(default_factory=dict)
     """Filename → UTF-8 content (with placeholders intact)."""
     warnings: list[str] = Field(default_factory=list)
-
-

@@ -4,32 +4,24 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from pynydus.api.errors import NydusfileError
-from pynydus.api.schemas import Bucket, PriorityHint, RedactMode, SourceType
+from pynydus.common.enums import (
+    AgentType,
+    Bucket,
+    Directive,
+    MemoryLabel,
+)
 
 _logger = logging.getLogger(__name__)
-
-_VALID_SOURCES = {s.value for s in SourceType}
-"""Source types accepted by SOURCE directives."""
-_VALID_BUCKETS = {b.value for b in Bucket}
-_VALID_REDACT = {r.value for r in RedactMode}
-_VALID_PRIORITY = {p.value for p in PriorityHint}
-_VALID_SECRET_POLICY = {"all_required", "none_required", "default"}
-
-# Directives that may appear at most once.
-_SINGULAR_DIRECTIVES = {
-    "FROM", "INCLUDE", "EXCLUDE", "REDACT", "PURPOSE", "SECRET_POLICY",
-}
-# Directives that may appear multiple times.
-_REPEATABLE_DIRECTIVES = {"PRIORITIZE", "EXCLUDE_FILES", "LABEL", "ADD", "SET", "REMOVE", "SOURCE"}
 
 
 @dataclass
 class SourceDirective:
     """A SOURCE directive from the Nydusfile."""
 
-    source_type: str
+    agent_type: str
     path: str
 
 
@@ -37,42 +29,30 @@ class SourceDirective:
 class MergeOp:
     """A single ADD/SET/REMOVE merge operation from the Nydusfile."""
 
-    action: str  # "add", "set", "remove"
-    bucket: str  # "memory", "skill", "secret"
-    key: str  # identifier, label selector, file path, or secret name
-    value: str = ""  # text content or file path for ADD/SET
+    action: Directive
+    bucket: Bucket
+    key: str
+    value: str = ""
 
 
 @dataclass
 class NydusfileConfig:
     """Parsed and verified Nydusfile configuration."""
 
-    source: SourceType
     base_egg: str | None = None
     """Local file path to a base .egg archive for inheritance."""
     merge_ops: list[MergeOp] = field(default_factory=list)
     """ADD/SET/REMOVE operations to apply to the base egg."""
-    include: set[Bucket] | None = None
-    exclude: set[Bucket] | None = None
-    redact: RedactMode = RedactMode.PII
-    priorities: list[PriorityHint] = field(default_factory=list)
-    purpose: str | None = None
-    exclude_files: list[str] = field(default_factory=list)
-    """Glob patterns for files to skip during source extraction."""
+    redact: bool = True
+    """Whether to redact credentials and PII. Defaults to True."""
+    excluded_memory_labels: list[MemoryLabel] = field(default_factory=list)
+    """Memory buckets to drop after parse (repeatable ``EXCLUDE`` lines)."""
     custom_labels: dict[str, str] = field(default_factory=dict)
     """Manual label overrides: pattern → label. Applied during classification."""
-    secret_policy: str = "default"
-    """Controls required_at_hatch: 'all_required', 'none_required', or 'default'."""
     sources: list[SourceDirective] = field(default_factory=list)
-    """Multi-source input: zero or more SOURCE directives."""
-
-    @property
-    def effective_buckets(self) -> set[Bucket]:
-        """Compute the final set of included buckets."""
-        base = self.include if self.include is not None else set(Bucket)
-        if self.exclude:
-            base = base - self.exclude
-        return base
+    """At most one SOURCE directive (zero if FROM-only)."""
+    source_remove_globs: list[str] = field(default_factory=list)
+    """Glob patterns for source keys to drop before parse (``REMOVE file <glob>``)."""
 
 
 def parse(text: str) -> NydusfileConfig:
@@ -82,16 +62,12 @@ def parse(text: str) -> NydusfileConfig:
     """
     base_egg: str | None = None
     merge_ops: list[MergeOp] = []
-    include: set[Bucket] | None = None
-    exclude: set[Bucket] | None = None
-    redact: RedactMode = RedactMode.PII
-    priorities: list[PriorityHint] = []
-    purpose: str | None = None
-    exclude_files: list[str] = []
+    redact: bool = True
+    excluded_memory_labels: list[MemoryLabel] = []
     custom_labels: dict[str, str] = {}
-    secret_policy: str = "default"
     sources: list[SourceDirective] = []
-    seen: dict[str, int] = {}  # directive -> first line number
+    source_remove_globs: list[str] = []
+    seen: dict[Directive, int] = {}
 
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
@@ -99,230 +75,185 @@ def parse(text: str) -> NydusfileConfig:
             continue
 
         parts = line.split(None, 1)
-        directive = parts[0].upper()
         arg = parts[1] if len(parts) > 1 else ""
 
-        # --- Duplicate / unknown check ---
-        if directive in _SINGULAR_DIRECTIVES:
+        try:
+            directive = Directive(parts[0].upper())
+        except ValueError:
+            raise NydusfileError(f"Unknown directive '{parts[0]}'", line=lineno)
+
+        # --- Duplicate check ---
+        if directive.is_singular:
             if directive in seen:
                 raise NydusfileError(
                     f"Duplicate directive {directive} (first seen on line {seen[directive]})",
                     line=lineno,
                 )
             seen[directive] = lineno
-        elif directive in _REPEATABLE_DIRECTIVES:
-            pass  # multiple allowed
-        else:
-            raise NydusfileError(f"Unknown directive '{parts[0]}'", line=lineno)
 
         # --- Parse each directive ---
-        if directive == "FROM":
+        if directive is Directive.FROM:
             if not arg:
                 raise NydusfileError("FROM requires an egg reference", line=lineno)
             val = arg.strip()
-
-            _is_egg_ref = (
-                val.endswith(".egg")
-                or "/" in val
-                or "\\" in val
-                or ":" in val
-            )
-            if _is_egg_ref:
+            try:
+                AgentType(val.lower())
+            except ValueError:
                 base_egg = val
                 continue
-
-            val_lower = val.lower()
-            if val_lower in {s.value for s in SourceType}:
-                raise NydusfileError(
-                    f"FROM no longer accepts source types. "
-                    f"Use SOURCE {val_lower} <path> instead.",
-                    line=lineno,
-                )
             raise NydusfileError(
-                f"Invalid egg reference '{val}'. "
-                f"FROM accepts a local egg path (e.g., ./base.egg) "
-                f"or a versioned egg ref (e.g., nydus/openclaw:0.2.0).",
+                f"FROM no longer accepts source types. Use SOURCE {val.lower()} <path> instead.",
                 line=lineno,
             )
 
-        elif directive == "INCLUDE":
-            include = _parse_bucket_list(arg, lineno)
-
-        elif directive == "EXCLUDE":
-            exclude = _parse_bucket_list(arg, lineno)
-
-        elif directive == "REDACT":
+        elif directive is Directive.REDACT:
             if not arg:
-                raise NydusfileError("REDACT requires a mode", line=lineno)
+                raise NydusfileError("REDACT requires true or false", line=lineno)
             val = arg.strip().lower()
-            if val not in _VALID_REDACT:
+            if val not in ("true", "false"):
                 raise NydusfileError(
-                    f"Unknown redaction mode '{val}'. "
-                    f"Expected one of: {', '.join(sorted(_VALID_REDACT))}",
+                    f"Invalid REDACT value '{val}'. Expected 'true' or 'false'.",
                     line=lineno,
                 )
-            redact = RedactMode(val)
+            redact = val == "true"
 
-        elif directive == "PRIORITIZE":
+        elif directive is Directive.EXCLUDE:
             if not arg:
-                raise NydusfileError("PRIORITIZE requires a hint", line=lineno)
-            val = arg.strip().lower()
-            if val not in _VALID_PRIORITY:
                 raise NydusfileError(
-                    f"Unknown priority hint '{val}'. "
-                    f"Expected one of: {', '.join(sorted(_VALID_PRIORITY))}",
+                    "EXCLUDE requires a memory label (persona, flow, context, or state)",
                     line=lineno,
                 )
-            priorities.append(PriorityHint(val))
+            token = arg.strip().split(None, 1)[0]
+            try:
+                excluded_memory_labels.append(MemoryLabel(token.lower()))
+            except ValueError:
+                raise NydusfileError(
+                    f"Unknown memory label '{token}' for EXCLUDE. "
+                    f"Expected one of: {', '.join(sorted(MemoryLabel))}",
+                    line=lineno,
+                )
 
-        elif directive == "PURPOSE":
-            if not arg:
-                raise NydusfileError("PURPOSE requires a quoted string", line=lineno)
-            stripped = arg.strip()
-            if not (stripped.startswith('"') and stripped.endswith('"')):
-                raise NydusfileError("PURPOSE value must be a quoted string", line=lineno)
-            purpose = stripped[1:-1]
-
-        elif directive == "EXCLUDE_FILES":
-            if not arg:
-                raise NydusfileError("EXCLUDE_FILES requires a glob pattern", line=lineno)
-            exclude_files.append(arg.strip())
-
-        elif directive == "LABEL":
+        elif directive is Directive.LABEL:
             if not arg:
                 raise NydusfileError("LABEL requires 'pattern label'", line=lineno)
             label_parts = arg.strip().split(None, 1)
             if len(label_parts) < 2:
                 raise NydusfileError(
-                    "LABEL requires two arguments: pattern and label "
-                    "(e.g., LABEL soul.md system)",
+                    "LABEL requires two arguments: pattern and label (e.g., LABEL soul.md persona)",
                     line=lineno,
                 )
-            custom_labels[label_parts[0]] = label_parts[1]
-
-        elif directive == "SECRET_POLICY":
-            if not arg:
-                raise NydusfileError("SECRET_POLICY requires a policy", line=lineno)
-            val = arg.strip().lower()
-            if val not in _VALID_SECRET_POLICY:
+            pattern, label_str = label_parts[0], label_parts[1]
+            if pattern in custom_labels:
                 raise NydusfileError(
-                    f"Unknown secret policy '{val}'. "
-                    f"Expected one of: {', '.join(sorted(_VALID_SECRET_POLICY))}",
+                    f"Duplicate LABEL for pattern '{pattern}'",
                     line=lineno,
                 )
-            secret_policy = val
+            try:
+                MemoryLabel(label_str)
+            except ValueError:
+                raise NydusfileError(
+                    f"Unknown label '{label_str}'. "
+                    f"Expected one of: {', '.join(sorted(MemoryLabel))}",
+                    line=lineno,
+                )
+            custom_labels[pattern] = label_str
 
-        elif directive == "SOURCE":
+        elif directive is Directive.SOURCE:
             if not arg:
-                raise NydusfileError("SOURCE requires type and path (e.g., SOURCE openclaw ./data)", line=lineno)
+                raise NydusfileError(
+                    "SOURCE requires type and path (e.g., SOURCE openclaw ./data)", line=lineno
+                )
             src_parts = arg.strip().split(None, 1)
             if len(src_parts) < 2:
                 raise NydusfileError(
-                    "SOURCE requires two arguments: type and path "
-                    "(e.g., SOURCE openclaw ./data)",
+                    "SOURCE requires two arguments: type and path (e.g., SOURCE openclaw ./data)",
                     line=lineno,
                 )
             src_type = src_parts[0].lower()
             src_path = src_parts[1]
-            if src_type not in _VALID_SOURCES:
+            try:
+                AgentType(src_type)
+            except ValueError:
                 raise NydusfileError(
-                    f"Unknown source type '{src_type}' for SOURCE. "
-                    f"Expected one of: {', '.join(sorted(_VALID_SOURCES))}",
+                    f"Unknown agent type '{src_type}' for SOURCE. "
+                    f"Expected one of: {', '.join(sorted(AgentType))}",
                     line=lineno,
                 )
-            # Check for duplicate source_type+path pairs
-            new_src = SourceDirective(source_type=src_type, path=src_path)
-            for existing in sources:
-                if existing.source_type == new_src.source_type and existing.path == new_src.path:
-                    raise NydusfileError(
-                        f"Duplicate SOURCE: {src_type} {src_path}",
-                        line=lineno,
-                    )
+            if sources:
+                raise NydusfileError(
+                    "Only one SOURCE directive is allowed. Combine inputs under one directory "
+                    "or use separate Nydusfiles.",
+                    line=lineno,
+                )
+            new_src = SourceDirective(agent_type=src_type, path=src_path)
             sources.append(new_src)
 
-        elif directive == "ADD":
-            op = _parse_merge_op("add", arg, lineno)
-            merge_ops.append(op)
-
-        elif directive == "SET":
-            op = _parse_merge_op("set", arg, lineno)
-            merge_ops.append(op)
-
-        elif directive == "REMOVE":
-            op = _parse_merge_op("remove", arg, lineno)
-            merge_ops.append(op)
+        elif directive.is_merge:
+            if directive is Directive.REMOVE and _is_remove_file_directive(arg):
+                pat = _parse_remove_file_pattern(arg, lineno)
+                source_remove_globs.append(pat)
+            else:
+                merge_ops.append(_parse_merge_op(directive, arg, lineno))
 
     # --- Verification ---
     if base_egg is None and not sources:
-        raise NydusfileError(
-            "Nydusfile must have at least one SOURCE directive or a FROM base egg"
-        )
-
-    # Contradiction: same bucket in both INCLUDE and EXCLUDE
-    if include is not None and exclude is not None:
-        overlap = include & exclude
-        if overlap:
-            raise NydusfileError(
-                f"Contradictory include/exclude: {', '.join(b.value for b in overlap)}"
-            )
+        raise NydusfileError("Nydusfile must have at least one SOURCE directive or a FROM base egg")
 
     # PII safety warning
-    if redact == RedactMode.NONE:
-        _logger.warning("PII will not be redacted (REDACT none)")
+    if not redact:
+        _logger.warning(
+            "Redaction disabled (REDACT false). PII and credentials will not be redacted."
+        )
 
     # Merge ops require a base egg
     if merge_ops and base_egg is None:
         raise NydusfileError("ADD/SET/REMOVE directives require a base egg (FROM path/to/base.egg)")
 
-    if sources:
-        effective_source = SourceType(sources[0].source_type)
-    else:
-        effective_source = SourceType.OPENCLAW  # placeholder; resolved from base egg at spawn time
+    if source_remove_globs and not sources:
+        raise NydusfileError(
+            "REMOVE file <glob> requires a SOURCE directive (no source tree to filter)"
+        )
 
     return NydusfileConfig(
-        source=effective_source,
         base_egg=base_egg,
         merge_ops=merge_ops,
-        include=include,
-        exclude=exclude,
         redact=redact,
-        priorities=priorities,
-        purpose=purpose,
-        exclude_files=exclude_files,
+        excluded_memory_labels=excluded_memory_labels,
         custom_labels=custom_labels,
-        secret_policy=secret_policy,
         sources=sources,
+        source_remove_globs=source_remove_globs,
     )
 
 
 def parse_file(path: str) -> NydusfileConfig:
     """Parse a Nydusfile from a file path."""
-    from pathlib import Path
-
     text = Path(path).read_text()
     return parse(text)
 
 
-def _parse_bucket_list(arg: str, lineno: int) -> set[Bucket]:
-    """Parse a comma-separated bucket list."""
-    if not arg.strip():
-        raise NydusfileError("Expected bucket list (skills, memory, secrets)", line=lineno)
-    buckets: set[Bucket] = set()
-    for token in arg.split(","):
-        val = token.strip().lower()
-        if val not in _VALID_BUCKETS:
-            raise NydusfileError(
-                f"Unknown bucket '{val}'. Expected one of: {', '.join(sorted(_VALID_BUCKETS))}",
-                line=lineno,
-            )
-        buckets.add(Bucket(val))
-    return buckets
+def _is_remove_file_directive(arg: str) -> bool:
+    if not arg or not arg.strip():
+        return False
+    return arg.strip().split(None, 1)[0].lower() == "file"
 
 
-_VALID_MERGE_BUCKETS = {"memory", "skill", "secret"}
+def _parse_remove_file_pattern(arg: str, lineno: int) -> str:
+    parts = arg.strip().split(None, 1)
+    if len(parts) < 2 or parts[0].lower() != "file":
+        raise NydusfileError(
+            "REMOVE file requires a glob pattern (e.g., REMOVE file *.log)",
+            line=lineno,
+        )
+    pat = parts[1].strip()
+    if not pat:
+        raise NydusfileError(
+            "REMOVE file requires a glob pattern (e.g., REMOVE file *.log)",
+            line=lineno,
+        )
+    return pat
 
 
-def _parse_merge_op(action: str, arg: str, lineno: int) -> MergeOp:
+def _parse_merge_op(action: Directive, arg: str, lineno: int) -> MergeOp:
     """Parse an ADD/SET/REMOVE directive argument.
 
     Supported forms:
@@ -336,7 +267,7 @@ def _parse_merge_op(action: str, arg: str, lineno: int) -> MergeOp:
     """
     if not arg:
         raise NydusfileError(
-            f"{action.upper()} requires arguments: bucket [key] [value]",
+            f"{action} requires arguments: bucket [key] [value]",
             line=lineno,
         )
 
@@ -344,53 +275,58 @@ def _parse_merge_op(action: str, arg: str, lineno: int) -> MergeOp:
     bucket_spec = parts[0].lower()
     rest = parts[1] if len(parts) > 1 else ""
 
-    # Parse bucket and optional selector (e.g., "memory.label=X")
     if "." in bucket_spec:
-        bucket, selector = bucket_spec.split(".", 1)
+        raw_bucket, selector = bucket_spec.split(".", 1)
     else:
-        bucket = bucket_spec
+        raw_bucket = bucket_spec
         selector = ""
 
-    if bucket not in _VALID_MERGE_BUCKETS:
+    try:
+        bucket = Bucket(raw_bucket)
+    except ValueError:
         raise NydusfileError(
-            f"Unknown bucket '{bucket}' for {action.upper()}. "
-            f"Expected one of: {', '.join(sorted(_VALID_MERGE_BUCKETS))}",
+            f"Unknown bucket '{raw_bucket}' for {action}. "
+            f"Expected one of: {', '.join(sorted(Bucket))}",
             line=lineno,
         )
 
-    if action == "remove":
-        # REMOVE bucket key  OR  REMOVE bucket.selector
+    if action is Directive.REMOVE:
         key = selector or rest.strip()
         if not key:
             raise NydusfileError(
-                f"REMOVE requires an identifier (e.g., REMOVE skill my_skill)",
+                "REMOVE requires an identifier (e.g., REMOVE skill my_skill)",
                 line=lineno,
             )
-        return MergeOp(action="remove", bucket=bucket, key=key)
+        return MergeOp(action=Directive.REMOVE, bucket=bucket, key=key)
 
-    if action == "set":
+    if action is Directive.SET:
+        if bucket is Bucket.SECRET:
+            raise NydusfileError(
+                "SET is not supported for the secret bucket. Use REMOVE + ADD to replace a secret.",
+                line=lineno,
+            )
         if not selector:
             raise NydusfileError(
-                f"SET requires a selector (e.g., SET memory.label=facts \"new text\")",
+                'SET requires a selector (e.g., SET memory.label=facts "new text")',
                 line=lineno,
             )
         if not rest:
             raise NydusfileError(
-                f"SET requires a value (e.g., SET memory.label=facts \"new text\")",
+                'SET requires a value (e.g., SET memory.label=facts "new text")',
                 line=lineno,
             )
         value = _unquote(rest.strip())
-        return MergeOp(action="set", bucket=bucket, key=selector, value=value)
+        return MergeOp(action=Directive.SET, bucket=bucket, key=selector, value=value)
 
     # ADD
     if not rest:
         raise NydusfileError(
-            f"ADD requires content or a file path",
+            "ADD requires content or a file path",
             line=lineno,
         )
     value = _unquote(rest.strip())
-    key = selector  # may be empty for simple adds
-    return MergeOp(action="add", bucket=bucket, key=key, value=value)
+    key = selector
+    return MergeOp(action=Directive.ADD, bucket=bucket, key=key, value=value)
 
 
 def _unquote(s: str) -> str:
@@ -398,3 +334,67 @@ def _unquote(s: str) -> str:
     if len(s) >= 2 and s.startswith('"') and s.endswith('"'):
         return s[1:-1]
     return s
+
+
+# ---------------------------------------------------------------------------
+# Nydusfile discovery and default template generation
+# ---------------------------------------------------------------------------
+
+
+def resolve_nydusfile(directory: Path) -> Path:
+    """Find or create a Nydusfile in the given directory.
+
+    If no Nydusfile exists, auto-detects the agent type and writes
+    a default Nydusfile from the corresponding template.
+    """
+    nydusfile = directory / "Nydusfile"
+    if nydusfile.exists():
+        return nydusfile
+
+    agent_type = _auto_detect_for_template(directory)
+    template = _load_default_template(agent_type)
+    nydusfile.write_text(template)
+    _logger.info("Created default Nydusfile for %s", agent_type)
+    return nydusfile
+
+
+def _auto_detect_for_template(directory: Path) -> AgentType:
+    """Identify the agent type in *directory* by probing each spawner.
+
+    All spawners are evaluated; if more than one matches, the layout is
+    ambiguous and the user must add an explicit ``SOURCE <type> <path>``.
+    """
+    from pynydus.agents.letta.spawner import LettaSpawner
+    from pynydus.agents.openclaw.spawner import OpenClawSpawner
+    from pynydus.agents.zeroclaw.spawner import ZeroClawSpawner
+
+    candidates: list[tuple[object, AgentType]] = [
+        (OpenClawSpawner(), AgentType.OPENCLAW),
+        (LettaSpawner(), AgentType.LETTA),
+        (ZeroClawSpawner(), AgentType.ZEROCLAW),
+    ]
+    matches = [at for spawner, at in candidates if spawner.detect(directory)]
+
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        names = ", ".join(sorted(m.value for m in matches))
+        raise NydusfileError(
+            f"Ambiguous agent layout in {directory}: matches {names}. "
+            "Create a Nydusfile with an explicit line such as "
+            "'SOURCE openclaw ./' or 'SOURCE zeroclaw ./' (adjust type and path)."
+        )
+    raise NydusfileError(
+        f"Cannot auto-detect agent type in {directory}. "
+        "Create a Nydusfile manually with a SOURCE directive."
+    )
+
+
+def _load_default_template(agent_type: AgentType) -> str:
+    """Load the Nydusfile.default template for *agent_type*."""
+    template_path = (
+        Path(__file__).resolve().parent.parent / "agents" / agent_type / "Nydusfile.default"
+    )
+    if not template_path.exists():
+        raise NydusfileError(f"No default Nydusfile template for agent type '{agent_type}'")
+    return template_path.read_text()

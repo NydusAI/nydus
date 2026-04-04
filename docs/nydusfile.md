@@ -1,95 +1,31 @@
 # Nydusfile DSL
 
-The Nydusfile is a declarative configuration file that controls how Eggs are
-built. It has no conditionals, no loops, and no side effects. Every directive
-can be validated before execution.
-
-Place a file named `Nydusfile` (no extension) in your working directory.
+The Nydusfile is a declarative, statically verifiable DSL for controlling
+spawning. It has no conditionals, no loops, and no side effects. Every
+directive can be verified before execution.
 
 ## Grammar
 
 ```text
 Nydusfile := Directive*
-Directive := FROM | SOURCE | INCLUDE | EXCLUDE | REDACT
-           | PRIORITIZE | PURPOSE | ADD | SET | REMOVE
-           | EXCLUDE_FILES | LABEL | SECRET_POLICY
+Directive := FROM | SOURCE | REDACT | EXCLUDE
+           | LABEL | ADD | SET | REMOVE
 ```
 
-Each directive occupies one line. Blank lines and trailing whitespace are
-ignored.
-
-## Practical examples
-
-### Minimal
-
-The simplest Nydusfile points at one source directory:
+## Example
 
 ```text
+FROM nydus/openclaw:0.3.0
 SOURCE openclaw ./my-agent/
-REDACT pii
-```
-
-### Multi-source
-
-Combine inputs from multiple frameworks into one Egg:
-
-```text
-SOURCE openclaw ./agent-a/
-SOURCE letta ./agent-b/
-REDACT pii
-PURPOSE "multilingual support assistant"
-```
-
-Records from all sources are pooled and merged.
-
-### Layering on a base Egg
-
-Start from a published Egg and add or override content:
-
-```text
-FROM nydus/openclaw:0.2.0
+REDACT true
 ADD skill ./custom-summarizer/
 ADD memory "Working on Project X with Snowflake"
 ADD secret SNOWFLAKE_API_KEY
 SET memory.label=persona "Prefers responses in Korean"
 REMOVE skill outdated-workflow
-```
-
-`FROM` pulls the base from the Nest registry (or a local `.egg` path).
-`ADD`, `SET`, and `REMOVE` modify the base content.
-
-### Filtering
-
-Control which modules appear in the output and which source files to skip:
-
-```text
-SOURCE openclaw ./my-agent/
-INCLUDE skills, memory
-EXCLUDE secrets
-EXCLUDE_FILES *.log
-EXCLUDE_FILES drafts/**
-REDACT pii
-```
-
-### Label overrides
-
-Override the automatic label assigned to a source file:
-
-```text
-SOURCE zeroclaw ./my-agent/
+REMOVE file *.log
+EXCLUDE state
 LABEL soul.md persona
-LABEL notes.md state
-REDACT pii
-```
-
-### Secret policy
-
-Control whether secrets are required at hatch time:
-
-```text
-SOURCE openclaw ./my-agent/
-REDACT secrets
-SECRET_POLICY all_required
 ```
 
 ## Directives reference
@@ -100,52 +36,75 @@ SECRET_POLICY all_required
 FROM <egg-reference>
 ```
 
-Versioned base Egg from the Nest registry or a local `.egg` file path. The base
-Egg's contents are used as the starting point. `ADD`, `SET`, and `REMOVE`
-directives modify it.
+Versioned base egg from the Nest registry or a local `.egg` file path. The base
+egg's contents are used as the starting point. ADD/SET/REMOVE modify it.
 
-Only accepts Egg references, not source types. Use `SOURCE` for reading live
-agent directories.
+Only accepts egg references, not source types. Use SOURCE instead of
+`FROM openclaw`.
 
-- `FROM nydus/openclaw:0.2.0` (registry reference)
-- `FROM ./base.egg` (local file)
+> **Note:** When both FROM and SOURCE are present, FROM provides the base
+> template and SOURCE supplies fresh source extraction. Base egg records are
+> merged with the extracted records. ADD/SET/REMOVE modify the base egg
+> **before** merging.
+
+Examples:
+- `FROM nydus/openclaw:0.3.0`
+- `FROM ./base.egg`
 
 ### SOURCE
 
 ```text
-SOURCE <source_type> <path>
+SOURCE <agent_type> <path>
 ```
 
-Repeatable. Declares an input source directory or file. Each source is processed
-by its framework-specific spawner. Multiple `SOURCE` directives produce a pooled
-extraction.
+Declares a single input source (at most **one** `SOURCE` line per Nydusfile).
+The tree at `<path>` is processed by the corresponding spawner. To combine
+several agent layouts, merge them under one directory or use separate Nydusfiles.
 
 Source types: `openclaw`, `zeroclaw`, `letta`.
-
-### INCLUDE / EXCLUDE
-
-```text
-INCLUDE <bucket-list>
-EXCLUDE <bucket-list>
-```
-
-Control which module buckets appear in the Egg. Bucket names: `skills`,
-`memory`, `secrets`. A bucket cannot appear in both INCLUDE and EXCLUDE.
 
 ### REDACT
 
 ```text
-REDACT <mode>
+REDACT true|false
 ```
 
-Redaction mode applied before content parsing:
+Enable or disable secret scanning (gitleaks) and PII redaction (Presidio).
 
-| Mode | Behavior |
-|------|----------|
-| `pii` | Credential scanning plus PII entity detection (default) |
-| `secrets` | Credential scanning only, no PII pass |
-| `all` | Full combination of credential and PII handling |
-| `none` | Skip redaction (warning logged, use only in trusted local contexts) |
+If the `REDACT` directive is **omitted**, redaction defaults to **`true`** (same
+as `REDACT true`). When `REDACT false` is set, a warning is logged and all real
+values remain in the Egg.
+
+### EXCLUDE
+
+```text
+EXCLUDE <memory-label>
+```
+
+Repeatable. Each line names a **memory bucket** to omit from the final Egg:
+`persona`, `flow`, `context`, or `state` (same vocabulary as `LABEL`). Matching
+is case-insensitive on the label token.
+
+After the spawner builds memory and any `LABEL` overrides are applied, every
+`MemoryRecord` whose label is listed is **removed** from `Egg.memory`. Source
+files are still read and appear in `raw/` snapshots; only structured memory for
+those buckets is dropped. **Skills** are not affected.
+
+**Breaking change:** Older Nydusfiles that used `EXCLUDE` with file glob
+patterns must be updated to memory labels (or use another mechanism for file
+filtering if added later).
+
+### LABEL
+
+```text
+LABEL <pattern> <label>
+```
+
+Repeatable. Override memory record labels based on source file pattern matching.
+The label must be one of: `persona`, `flow`, `context`, `state`. Duplicate
+patterns are rejected at parse time.
+
+Example: `LABEL soul.md persona`
 
 ### ADD
 
@@ -154,11 +113,14 @@ ADD <bucket> <content-or-path>
 ADD <bucket> "<inline text>"
 ```
 
-Add content to a bucket. Requires a `FROM` base Egg.
+Add content to a bucket. For skills and memory, accepts a file path or a quoted
+inline string. For secrets, accepts a secret name. Bucket names: `skill`,
+`memory`, `secret`.
 
-- `ADD skill ./custom-summarizer/` (directory path)
-- `ADD memory "Working on Project X"` (inline text)
-- `ADD secret SNOWFLAKE_API_KEY` (secret name)
+Examples:
+- `ADD skill ./custom-summarizer/`
+- `ADD memory "Working on Project X"`
+- `ADD secret SNOWFLAKE_API_KEY`
 
 ### SET
 
@@ -166,86 +128,59 @@ Add content to a bucket. Requires a `FROM` base Egg.
 SET <bucket>.<selector> "<value>"
 ```
 
-Override or add a labeled record. The selector identifies which records to
-modify.
+Override all records matching the selector in the `memory` or `skill` bucket.
+Not supported for `secret` — use REMOVE + ADD instead. All matching records are
+updated (not just the first).
 
-- `SET memory.label=persona "Prefers concise responses"`
+Example: `SET memory.label=persona "Prefers concise responses"`
 
 ### REMOVE
+
+Two forms:
+
+**1. Merger (requires `FROM`)** — mutate the base egg before any `SOURCE` merge:
 
 ```text
 REMOVE <bucket> <identifier>
 ```
 
-Remove a named record inherited from the base Egg.
+Remove a named record inherited from the base egg.
 
-- `REMOVE skill outdated-workflow`
+Example: `REMOVE skill outdated-workflow`
 
-### PRIORITIZE
-
-```text
-PRIORITIZE <hint>
-```
-
-Repeatable. Soft hints for the pipeline that influence refinement behavior.
-Available hints: `recent_history`, `skills`, `compact_memory`.
-
-### PURPOSE
+**2. Source file drop (requires `SOURCE`)** — omit files from extraction, parse, and `raw/`:
 
 ```text
-PURPOSE "<quoted string>"
+REMOVE file <glob-pattern>
 ```
 
-Human-provided build intent. Stored in `manifest.build_intent` and used by
-the LLM as context during optional refinement.
+Repeatable. Glob patterns match **source file keys** (e.g. `soul.md`, `skills/*.md`), like shell `fnmatch`. Applied after read, before redaction and parse.
 
-### EXCLUDE_FILES
+Example: `REMOVE file *.log`
 
-```text
-EXCLUDE_FILES <glob-pattern>
-```
+Merger-style `REMOVE skill …` and `REMOVE file …` can appear in the same Nydusfile when both `FROM` and `SOURCE` are set.
 
-Repeatable. Glob patterns for source files to skip during extraction.
+## Auto-generated Nydusfile
 
-- `EXCLUDE_FILES *.log`
-- `EXCLUDE_FILES drafts/**`
-
-### LABEL
-
-```text
-LABEL <pattern> <label>
-```
-
-Repeatable. Override the memory label that the spawner assigns to files
-matching the given pattern. Labels: `persona`, `flow`, `context`, `state`.
-
-- `LABEL soul.md persona`
-- `LABEL notes.md state`
-
-### SECRET_POLICY
-
-```text
-SECRET_POLICY <policy>
-```
-
-Controls whether placeholders must be resolved at hatch time:
-
-| Policy | Behavior |
-|--------|----------|
-| `default` | Each secret uses its own `required_at_hatch` setting |
-| `all_required` | All secrets must be supplied in the `.env` file |
-| `none_required` | Hatching proceeds even with unresolved placeholders |
+If no `Nydusfile` exists in the project directory, commands such as `nydus spawn`
+may create one from a template after **auto-detecting** the agent layout. If
+**multiple** agent types match the same directory (e.g. OpenClaw and ZeroClaw
+both recognize common files), detection is **ambiguous** — add a `Nydusfile`
+yourself with an explicit `SOURCE <agent_type> <path>` line.
 
 ## Static verification
 
-The Nydusfile parser validates directives before execution:
+The parser performs these checks before execution:
 
-| Check | What it catches |
-|-------|-----------------|
-| FROM resolves | Base Egg must exist (local path or registry reference) |
-| SOURCE types valid | Each SOURCE references a known spawner (`openclaw`, `zeroclaw`, `letta`) |
-| No bucket contradictions | A bucket cannot appear in both INCLUDE and EXCLUDE |
-| ADD targets valid bucket | Must reference `skill`, `memory`, or `secret` |
-| PII safety warning | Warning if REDACT is `none` |
-| Merge ops require base | `ADD`, `SET`, `REMOVE` require a `FROM` base Egg |
-| At least one input | Nydusfile must have `FROM` or at least one `SOURCE` |
+| Check | When | Description |
+|-------|------|-------------|
+| FROM shape valid | Parse | Value is not a bare source type |
+| FROM resolves | Spawn | Base egg exists (local path or registry pull) |
+| SOURCE types valid | Parse | `SOURCE` references a known spawner; at most one `SOURCE` line |
+| ADD/SET target valid bucket | Parse | References `skill`, `memory`, or `secret` (SET: `skill` or `memory` only) |
+| LABEL value valid | Parse | Label must be a known MemoryLabel (`persona`, `flow`, `context`, `state`) |
+| LABEL pattern unique | Parse | Same pattern cannot be assigned two different labels |
+| PII safety warning | Parse | Warning if REDACT is `false` |
+| Merge ops require base | Parse | ADD/SET/REMOVE (merger form) require a FROM base egg |
+| `REMOVE file` requires SOURCE | Parse | File drops apply only when a `SOURCE` tree is read |
+| At least one input | Parse | Nydusfile must have FROM or at least one SOURCE |

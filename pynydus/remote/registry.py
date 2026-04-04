@@ -24,17 +24,7 @@ CREDENTIALS_PATH = Path.home() / ".nydus" / "credentials.json"
 
 
 class NestClient:
-    """HTTP client for the Nest egg registry.
-
-    Parameters
-    ----------
-    url:
-        Base URL of the Nest server (e.g. ``http://localhost:8000``).
-    author:
-        Optional default author name attached to pushes.
-    timeout:
-        Request timeout in seconds.
-    """
+    """HTTP client for the Nest egg registry."""
 
     def __init__(
         self,
@@ -43,6 +33,13 @@ class NestClient:
         author: str | None = None,
         timeout: float = 60.0,
     ) -> None:
+        """Create a client.
+
+        Args:
+            url: Base URL of the Nest server (e.g. ``http://localhost:8000``).
+            author: Default author name for pushes when not overridden.
+            timeout: Request timeout in seconds.
+        """
         # Strip trailing slash for clean URL joining
         self.url = url.rstrip("/")
         self.author = author
@@ -71,17 +68,13 @@ class NestClient:
                 timeout=self.timeout,
             )
         except httpx.HTTPError as e:
-            raise RegistryError(
-                f"Failed to connect to registry at {self.url}: {e}"
-            ) from e
+            raise RegistryError(f"Failed to connect to registry at {self.url}: {e}") from e
 
         if response.status_code == 409:
             raise RegistryError(f"Username '{username}' is already taken")
         if response.status_code not in (200, 201):
             detail = _extract_detail(response)
-            raise RegistryError(
-                f"Registration failed (HTTP {response.status_code}): {detail}"
-            )
+            raise RegistryError(f"Registration failed (HTTP {response.status_code}): {detail}")
 
         return response.json()
 
@@ -97,17 +90,13 @@ class NestClient:
                 timeout=self.timeout,
             )
         except httpx.HTTPError as e:
-            raise RegistryError(
-                f"Failed to connect to registry at {self.url}: {e}"
-            ) from e
+            raise RegistryError(f"Failed to connect to registry at {self.url}: {e}") from e
 
         if response.status_code == 401:
             raise RegistryError("Invalid username or password")
         if response.status_code != 200:
             detail = _extract_detail(response)
-            raise RegistryError(
-                f"Login failed (HTTP {response.status_code}): {detail}"
-            )
+            raise RegistryError(f"Login failed (HTTP {response.status_code}): {detail}")
 
         data = response.json()
         token = data.get("token") or data.get("access_token", "")
@@ -142,26 +131,17 @@ class NestClient:
     ) -> dict[str, Any]:
         """Push an egg file to the registry.
 
-        Parameters
-        ----------
-        egg_path:
-            Path to the ``.egg`` archive on disk.
-        name:
-            Registry name (e.g. ``user/my-agent``).
-        version:
-            Semver version string.
-        author:
-            Override the default author for this push.
+        Args:
+            egg_path: Path to the ``.egg`` archive on disk.
+            name: Registry name (e.g. ``user/my-agent``).
+            version: Semver string.
+            author: Optional author override for this push.
 
-        Returns
-        -------
-        dict
-            Response body from the server (name, version, sha256, etc.).
+        Returns:
+            Server JSON (name, version, sha256, etc.).
 
-        Raises
-        ------
-        RegistryError
-            On HTTP errors or connection failures.
+        Raises:
+            RegistryError: On HTTP or connection failures, or duplicate version.
         """
         if not egg_path.exists():
             raise RegistryError(f"Egg file not found: {egg_path}")
@@ -187,9 +167,7 @@ class NestClient:
             raise RegistryError(f"Egg {name}:{version} already exists in registry")
         if response.status_code != 201:
             detail = _extract_detail(response)
-            raise RegistryError(
-                f"Push failed (HTTP {response.status_code}): {detail}"
-            )
+            raise RegistryError(f"Push failed (HTTP {response.status_code}): {detail}")
 
         return response.json()
 
@@ -202,24 +180,16 @@ class NestClient:
     ) -> Path:
         """Pull an egg from the registry and save to disk.
 
-        Parameters
-        ----------
-        name:
-            Registry name (e.g. ``user/my-agent``).
-        version:
-            Semver version string.
-        output_path:
-            Where to save the downloaded egg.
+        Args:
+            name: Registry name (e.g. ``user/my-agent``).
+            version: Semver string.
+            output_path: Destination file path.
 
-        Returns
-        -------
-        Path
-            The path the egg was saved to.
+        Returns:
+            Path written.
 
-        Raises
-        ------
-        RegistryError
-            On HTTP errors, 404, or connection failures.
+        Raises:
+            RegistryError: On HTTP errors, 404, SHA mismatch, or connection failure.
         """
         try:
             response = httpx.get(
@@ -234,9 +204,7 @@ class NestClient:
             raise RegistryError(f"Egg {name}:{version} not found in registry")
         if response.status_code != 200:
             detail = _extract_detail(response)
-            raise RegistryError(
-                f"Pull failed (HTTP {response.status_code}): {detail}"
-            )
+            raise RegistryError(f"Pull failed (HTTP {response.status_code}): {detail}")
 
         # Write to disk
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,24 +218,21 @@ class NestClient:
             actual = hashlib.sha256(response.content).hexdigest()
             if actual != sha256_header:
                 output_path.unlink(missing_ok=True)
-                raise RegistryError(
-                    f"SHA256 mismatch: expected {sha256_header}, got {actual}"
-                )
+                raise RegistryError(f"SHA256 mismatch: expected {sha256_header}, got {actual}")
 
         return output_path
 
     def list_versions(self, name: str) -> list[dict[str, Any]]:
         """List all versions of an egg in the registry.
 
-        Returns
-        -------
-        list[dict]
-            List of version info dicts (name, version, sha256, etc.).
+        Args:
+            name: Registry-qualified egg name.
 
-        Raises
-        ------
-        RegistryError
-            On HTTP errors or connection failures.
+        Returns:
+            Version metadata dicts from the server.
+
+        Raises:
+            RegistryError: On HTTP or connection failures.
         """
         try:
             response = httpx.get(
@@ -280,9 +245,7 @@ class NestClient:
 
         if response.status_code != 200:
             detail = _extract_detail(response)
-            raise RegistryError(
-                f"List versions failed (HTTP {response.status_code}): {detail}"
-            )
+            raise RegistryError(f"List versions failed (HTTP {response.status_code}): {detail}")
 
         data = response.json()
         return data.get("versions", [])
