@@ -9,6 +9,6 @@ Shared building blocks used across connectors and the public API.
 
 ## Generated modules
 
-The {doc}`../apidocs/index` tree includes full pages for `pynydus.common.connector_utils`
+The {doc}`/apidocs/index` tree includes full pages for `pynydus.common.connector_utils`
 and `pynydus.common.scan_paths` with every function and constant. All enums are also
-listed under {doc}`../apidocs/pynydus/pynydus.common.enums`.
+listed under {doc}`/apidocs/pynydus/pynydus.common.enums`.

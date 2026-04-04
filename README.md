@@ -11,10 +11,12 @@
   <a href="https://pypi.org/project/pynydus/"><img src="https://img.shields.io/pypi/v/pynydus?color=blue" alt="PyPI"></a>
   <a href="https://pypi.org/project/pynydus/"><img src="https://img.shields.io/pypi/pyversions/pynydus" alt="Python"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+  <a href="https://pynydus.readthedocs.io/en/latest/?badge=latest"><img src="https://readthedocs.org/projects/pynydus/badge/?version=latest" alt="Docs"></a>
   <a href="#status"><img src="https://img.shields.io/badge/status-early%20development-orange" alt="Status"></a>
 </p>
 
 <p align="center">
+  <a href="https://pynydus.readthedocs.io/en/latest/">Docs</a> •
   <a href="#install">Install</a> •
   <a href="#how-it-works">How it works</a> •
   <a href="#cli">CLI</a> •
@@ -153,7 +155,7 @@ tests/
 
 Set environment variables for LLM refinement and the Nest registry. Copy
 `[.env.example](.env.example)` to `.env` and fill in your values. See the
-[Configuration](docs/configuration.md) doc for all available settings
+[Configuration](docs/guides/configuration.md) doc for all available settings
 (`NYDUS_LLM_TYPE`, `NYDUS_LLM_API_KEY`, `NYDUS_REGISTRY_URL`, etc.).
 
 ## Development
@@ -187,9 +189,10 @@ make check        # CI-style check (no writes)
 
 ### Documentation
 
+Full documentation is hosted at
+[pynydus.readthedocs.io](https://pynydus.readthedocs.io/en/latest/).
 API reference is generated with [Sphinx](https://www.sphinx-doc.org/) and
 [sphinx-autodoc2](https://sphinx-autodoc2.readthedocs.io/) (`make docs`).
-Open `docs/_build/index.html` after a successful build.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 

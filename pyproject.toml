@@ -15,6 +15,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
+[project.urls]
+Documentation = "https://pynydus.readthedocs.io/en/latest/"
+Repository = "https://github.com/NydusAI/nydus"
+
 dependencies = [
     "cryptography>=43.0.0",
     "pydantic>=2.0",

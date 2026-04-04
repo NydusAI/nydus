@@ -14,5 +14,5 @@ config
 schemas
 raw_types
 errors
-../apidocs/index
+/apidocs/index
 ```

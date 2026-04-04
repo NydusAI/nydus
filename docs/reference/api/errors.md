@@ -39,4 +39,4 @@ All Nydus exceptions inherit from `NydusError`.
 
 All error classes are importable from `pynydus.api.errors`.
 
-**Full exception reference (auto-generated):** {doc}`../apidocs/pynydus/pynydus.api.errors`
+**Full exception reference (auto-generated):** {doc}`/apidocs/pynydus/pynydus.api.errors`

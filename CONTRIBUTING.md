@@ -98,7 +98,7 @@ To add support for a new agent platform (e.g. `myagent`):
 7. Add unit tests in `tests/unit/test_myagent_connector.py`
 8. Add the new agent type to the portability matrix in `tests/integration/test_portability.py`
 
-See `docs/advanced/connectors.md` for the full connector architecture guide.
+See `docs/advanced/adding-connectors.md` for the full connector architecture guide.
 
 ## Building base eggs
 
