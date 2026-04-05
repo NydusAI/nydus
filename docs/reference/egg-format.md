@@ -2,23 +2,16 @@
 
 ## Data model
 
-An `Egg` has four parts, defined in {py:mod}`pynydus.api.schemas`:
 
-**Manifest**: metadata including Nydus version, egg spec version (`"2.0"`), timestamp,
-source type, included modules, redaction policy, and an optional `sources` list
-(at most one entry).
+An `Egg` has four modules, defined in {py:mod}`pynydus.api.schemas`:
 
-**Skills** (`SkillsModule`): list of `SkillRecord` entries (id, name, source
-type, content, metadata) plus optional MCP server configurations.
+| Module | Class | Contents |
+|--------|-------|----------|
+| **Manifest** | `Manifest` | Nydus version, egg spec version (`"2.0"`), timestamp, source type, included modules, redaction policy, optional signature |
+| **Skills** | `SkillsModule` | List of `SkillRecord` (id, name, content) plus optional MCP server configurations |
+| **Memory** | `MemoryModule` | List of `MemoryRecord`, each labeled Memory[**persona**], Memory[**flow**], Memory[**context**], or Memory[**state**] |
+| **Secrets** | `SecretsModule` | List of `SecretRecord` placeholders (`{{SECRET_001}}`, `{{PII_001}}`) with injection metadata |
 
-**Memory** (`MemoryModule`): list of `MemoryRecord` entries with labeled text.
-Labels: `persona`, `flow`, `context`, `state`.
-
-**Secrets** (`SecretsModule`): list of `SecretRecord` entries. These are **placeholders**
-(`{{SECRET_001}}`, PII tokens) with metadata describing how real values are
-supplied at hatch time. Kinds: `credential` and `pii`.
-
-### Convenience accessors
 
 ```python
 egg.skills.skills     # list[SkillRecord]
@@ -28,33 +21,35 @@ egg.secrets.secrets   # list[SecretRecord]
 
 ## The `.egg` archive format
 
+
 A packed Egg is a ZIP file:
 
 ```text
 agent.egg
-├── manifest.json           Manifest
-├── memory.json             MemoryModule
-├── secrets.json            SecretsModule (placeholders + injection metadata)
+├── manifest.json       Manifest metadata
+├── memory.json         Memory records (labeled)
+├── secrets.json        Secret/PII placeholders + injection metadata
 ├── skills/
 │   └── <slug>/
-│       └── SKILL.md        Agent Skills format (YAML front matter + Markdown)
-├── nydus.json              Per-skill slug → {id, agent_type} mapping
+│       └── SKILL.md    Skill content (YAML front matter + Markdown)
+├── nydus.json          Skill slug to {id, agent_type} mapping
 ├── mcp/
-│   └── <server>.json       MCP server configs
+│   └── <server>.json   MCP server configs
 ├── raw/
-│   └── ...                 Redacted source files (passthrough hatch + auditing)
-├── spawn_log.json          Pipeline log
-├── apm.yml                 APM compatibility manifest
-├── signature.json          Optional Ed25519 signature
-└── Nydusfile               Copy of the workspace Nydusfile
+│   └── ...             Redacted source files (for passthrough hatch)
+├── spawn_log.json      Pipeline event log
+├── apm.yml             APM compatibility manifest
+├── signature.json      Ed25519 signature (optional)
+└── Nydusfile           Copy of the workspace Nydusfile
 ```
 
-Memory and secrets use JSON for typed round-tripping via Pydantic. Skills use
-the [Agent Skills](https://agentskills.io) Markdown format for human
-readability. `nydus.json` bridges internal IDs to skill slug directories.
-`apm.yml` enables [APM](https://github.com/microsoft/apm) compatibility.
-`raw/` is optional provenance, not the canonical model.
+
+Skills use the [Agent Skills](https://agentskills.io) Markdown format for
+human readability. `apm.yml` enables
+[APM](https://github.com/microsoft/apm) compatibility. `raw/` is optional
+provenance used for passthrough hatching, not the canonical model.
 
 ## API reference
+
 
 See {doc}`/reference/api/schemas` for the full Pydantic model reference.

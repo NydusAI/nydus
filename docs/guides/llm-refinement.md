@@ -7,27 +7,34 @@ together. If both are unset, refinement is skipped. If only one is set,
 
 See {doc}`/guides/configuration` for all environment variables.
 
-## Spawn-side (phase 7)
+## During spawn
+
 
 - **Memory deduplication**: merges near-duplicate records, summarizes verbose
   entries, preserves labels and placeholders.
+
 - **Skill cleanup**: normalizes names, fixes formatting, ensures proper markdown
   and code fencing.
+
 
 The LLM always operates on already-redacted content. It never sees real PII or
 secrets.
 
-## Hatch-side (phase 3)
+## During hatch
 
-- **Cross-platform hatch** (source ≠ target): adapts tone, structure, and
+
+- **Cross-platform hatch** (source != target): adapts tone, structure, and
   formatting for the target platform's conventions.
+
 - **Same-platform hatch** (source = target): polishes formatting and improves
   clarity without changing meaning.
+
 
 Runs **before** secret substitution, so the LLM only sees
 `{{SECRET_NNN}}` / `{{PII_NNN}}` placeholders.
 
 ## Spawn log as context
+
 
 The spawn pipeline records events (redactions, classifications, LLM calls) in
 `spawn_log.json`. At hatch time, that log is summarized and injected into the

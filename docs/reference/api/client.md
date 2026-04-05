@@ -5,6 +5,7 @@ using PyNydus programmatically. It mirrors the CLI 1:1.
 
 ## Example
 
+
 ```python
 from pathlib import Path
 from pynydus import Nydus
@@ -37,6 +38,7 @@ result = ny.hatch(
 print(result.output_dir, result.files_created, result.warnings)
 ```
 
+
 **Notes:**
 
 - `spawn()` fills `egg.raw_artifacts` and `egg.spawn_log`. `save()` writes
@@ -49,9 +51,10 @@ print(result.output_dir, result.files_created, result.warnings)
   Either reload with `include_raw=True` or pass `raw_artifacts=` from
   `pynydus.engine.packager.read_raw_artifacts(path)`.
 - Configure LLM and registry via environment variables (`NYDUS_LLM_TYPE`,
-  `NYDUS_LLM_API_KEY`, `NYDUS_REGISTRY_URL`, etc.). See {doc}`/guides/configuration`.
+  `NYDUS_LLM_API_KEY`,   `NYDUS_REGISTRY_URL`, etc.). See {doc}`/guides/configuration`.
 
 ## Nydus
+
 
 ```{autodoc2-object} pynydus.client.client.Nydus
 ```

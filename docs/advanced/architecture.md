@@ -5,6 +5,7 @@ responsibilities, and key design decisions.
 
 ## Data flow
 
+
 ```
 ┌──────────────┐     ┌───────────────────────────────────────────┐     ┌──────────────┐
 │  Source      │     │              Nydus Engine                 │     │  Target      │
@@ -14,11 +15,16 @@ responsibilities, and key design decisions.
 └──────────────┘     └───────────────────────────────────────────┘     └──────────────┘
 ```
 
+
 An agent's state flows through two pipelines with a portable **Egg** in the
-middle. The Egg is the interchange format, a signed ZIP containing structured
-modules (skills, memory, secrets) plus a redacted raw source snapshot.
+middle. The Egg is the interchange format: a signed ZIP containing structured
+modules (Skills, Memory, Secrets) plus a redacted raw source snapshot.
+
+Memory records carry one of four labels: Memory[**persona**],
+Memory[**flow**], Memory[**context**], or Memory[**state**].
 
 ## Spawn pipeline
+
 
 Entry point: `pynydus.engine.pipeline.spawn()`. Returns `(egg, raw_artifacts, logs)`.
 
@@ -33,14 +39,17 @@ Entry point: `pynydus.engine.pipeline.spawn()`. Returns `(egg, raw_artifacts, lo
 | 7. LLM refinement | `engine/refinement.py` | Deduplicate memory, normalize skills (placeholder'd content only) |
 | 8. Package | `engine/pipeline.py` | Build `Manifest` + `Egg`, apply `EXCLUDE`, `LABEL` |
 
+
 Phases 3–4 form the **secrets OUT boundary**. After them, no real credentials
 or PII exist in the pipeline. The spawner (phase 5) and LLM (phase 7) only
 see placeholder tokens. See {doc}`/guides/security` for details.
+
 
 When no Nydusfile exists, PyNydus probes each spawner's `detect()`. If multiple
 types match, spawn fails with an ambiguous layout error.
 
 ## Hatch pipeline
+
 
 Entry point: `pynydus.engine.hatcher.hatch()`.
 
@@ -53,6 +62,7 @@ Entry point: `pynydus.engine.hatcher.hatch()`.
 | 5. Write to disk | `engine/hatcher.py` | Write output files |
 | 6. Hatch log | `engine/hatcher.py` | Write `logs/hatch_log.json` |
 
+
 Phase 4 is the **secrets IN boundary**, the last transformation before disk.
 
 **Hatch modes:**
@@ -62,16 +72,19 @@ Phase 4 is the **secrets IN boundary**, the last transformation before disk.
 
 ## Module responsibilities
 
+
 ### `api/`: Data model
 
 Pydantic schemas for `Egg`, `Manifest`, modules, and record types. Also defines
 `ParseResult` / `RenderResult` (spawner/hatcher I/O contracts) and errors.
+
 
 ### `agents/`: Platform connectors
 
 Each platform has a **spawner** (`parse(files) -> ParseResult`) and a
 **hatcher** (`render(egg) -> RenderResult`). Connectors are pure functions over
 file dicts with no filesystem access. See {doc}`/reference/connectors`.
+
 
 ### `engine/`: Core pipelines
 
@@ -84,15 +97,18 @@ file dicts with no filesystem access. See {doc}`/reference/connectors`.
 - `validator.py`: structural egg validation
 - `differ.py`: egg-to-egg diff
 
+
 ### `security/`: Redaction and signing
 
 - `gitleaks.py`: credential scanning
 - `presidio.py`: PII detection and redaction
 - `signing.py`: Ed25519 key generation, signing, verification
 
+
 ### `client/`: Python SDK
 
 The `Nydus` class mirrors the CLI 1:1.
+
 
 ### `cmd/`: CLI
 
@@ -100,19 +116,24 @@ Typer-based CLI. Each command delegates to the SDK or engine.
 
 ## Key design decisions
 
+
 **Egg as interchange format.** Structured modules (skills, memory, secrets) are
 separated from the raw snapshot (`raw/`). This enables rebuild (cross-platform)
 and passthrough (same-platform) hatch modes.
+
 
 **Placeholder linking.** Every redacted value gets a unique token tracked with
 occurrence locations. The LLM can operate freely on placeholder'd content
 without seeing real secrets.
 
+
 **LLM never sees real secrets.** Redaction before parsing, injection after LLM
 polish. Strict ordering enforced by pipeline.
 
+
 **One SOURCE per Nydusfile.** Keeps the pipeline simple: one source, one type,
 one set of file patterns. Multi-source via `FROM` merging.
+
 
 **Connectors are file-dict pure.** Spawners/hatchers take `dict[str, str]` and
 return structured results. No filesystem access = trivially testable.

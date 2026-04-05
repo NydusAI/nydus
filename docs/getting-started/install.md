@@ -2,17 +2,19 @@
 
 ## PyNydus
 
+
 Requires Python 3.10+.
 
 ```bash
 pip install pynydus
 ```
 
-### Verify the installation
+Verify the installation:
 
 ```bash
 nydus --help
 ```
+
 
 You should see the list of available commands (`spawn`, `hatch`, `inspect`, etc.).
 
@@ -24,16 +26,8 @@ You should see the list of available commands (`spawn`, `hatch`, `inspect`, etc.
 | ZeroClaw | Yes | Yes |
 | Letta | Yes | Yes |
 
-### Core concepts
-
-| Term | Meaning |
-|------|---------|
-| **Egg** | The portable artifact. In memory it is an `Egg` object (manifest + skills + memory + secrets). On disk it is a `.egg` ZIP archive. |
-| **Spawn** | Read source files, redact secrets/PII, parse structure, and package into an Egg. |
-| **Hatch** | Read an Egg, render target files, resolve secrets, and write to disk. |
-| **Nydusfile** | A small DSL file declaring what to spawn: source type, redaction settings, and merge operations. |
-
 ## Gitleaks (external)
+
 
 Spawning with `REDACT true` (the default) requires
 [gitleaks](https://github.com/gitleaks/gitleaks) for secret scanning.
@@ -50,15 +44,8 @@ curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks
 go install github.com/gitleaks/gitleaks/v8@latest
 ```
 
-### Verify gitleaks
 
-```bash
-gitleaks version
-```
-
-Version 8.18+ is recommended.
-
-### Custom location
+Verify: `gitleaks version` (v8.18+ recommended).
 
 If the binary is not on `$PATH`, set `NYDUS_GITLEAKS_PATH`:
 
@@ -78,6 +65,7 @@ export NYDUS_GITLEAKS_PATH=/path/to/gitleaks
 
 ## Optional: LLM refinement
 
+
 To enable LLM-backed refinement during spawn and hatch, set two environment
 variables:
 
@@ -90,5 +78,6 @@ If both are unset, refinement is skipped (no error). See
 {doc}`/guides/configuration` for all environment variables.
 
 ## Next steps
+
 
 Continue to the {doc}`quickstart` to spawn and hatch your first Egg.

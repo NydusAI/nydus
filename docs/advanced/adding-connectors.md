@@ -5,10 +5,12 @@ requires implementing a single file with a small interface.
 
 ## Architecture
 
+
 Nydus separates source reading (spawners) from target rendering (hatchers):
 
 - **Spawners** are target-agnostic: `parse(files) -> ParseResult`
 - **Hatchers** are target-specific: `render(egg) -> RenderResult`
+
 
 ```text
 agents/
@@ -24,6 +26,7 @@ agents/
 ```
 
 ## Adding a new source
+
 
 Create `pynydus/agents/slack/spawner.py` with `detect()`, `parse()`,
 `validate()`, and `FILE_PATTERNS`:
@@ -64,6 +67,7 @@ class SlackSpawner:
         )
 ```
 
+
 Then register:
 
 1. Add `SLACK = "slack"` to `AgentType` in `pynydus/common/enums.py`
@@ -72,6 +76,7 @@ Then register:
 The new source is immediately available for all targets.
 
 ## Adding a new target
+
 
 Create `pynydus/agents/newtarget/hatcher.py`:
 
@@ -103,14 +108,17 @@ class NewTargetHatcher:
         )
 ```
 
+
 Register: add a case to `_get_hatcher()` in `pynydus/engine/hatcher.py`.
 
 ## Key types
+
 
 **Spawner types** (`pynydus.api.raw_types`):
 - {py:class}`~pynydus.api.raw_types.ParseResult`: output from `parse()`
 - {py:class}`~pynydus.api.raw_types.RawSkill`: one skill (name + content)
 - {py:class}`~pynydus.api.raw_types.RawMemory`: one memory snippet
+
 
 **Hatcher types**:
 - {py:class}`~pynydus.api.raw_types.RenderResult`: output from `render()`

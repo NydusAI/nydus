@@ -6,6 +6,7 @@ security model: redaction, placeholder linking, signing, and trust boundaries.
 
 ## Redaction boundary (secrets OUT)
 
+
 During spawn, redaction happens **before** any parsing or LLM calls:
 
 ```
@@ -34,6 +35,7 @@ Redacted files (only placeholders)
 Output files (real values restored)
 ```
 
+
 ### Gitleaks (credentials)
 
 [Gitleaks](https://github.com/gitleaks/gitleaks) scans source files for API
@@ -43,12 +45,14 @@ placeholder. Each finding becomes a `SecretRecord` with kind `credential`.
 Gitleaks must be installed when spawning with `REDACT true` and `SOURCE`
 directives. See {doc}`/getting-started/install` for setup.
 
+
 ### Presidio (PII)
 
 [Presidio](https://microsoft.github.io/presidio/) scans the
 (already gitleaks-processed) files for PII (emails, phone numbers, person
 names, SSNs, etc.) and replaces each with a `{{PII_NNN}}` placeholder (kind
 `pii`). Uses the `en_core_web_lg` spaCy model with custom recognizers.
+
 
 ### REDACT directive
 
@@ -57,34 +61,23 @@ names, SSNs, etc.) and replaces each with a `{{PII_NNN}}` placeholder (kind
 | `true` (default) | Redacted | Redacted |
 | `false` | Kept | Kept |
 
+
 When `REDACT false` is set, a warning is logged. Use only for testing.
 
-### File classification
 
-| Category | Extensions | Behaviour |
-|----------|-----------|-----------|
-| **Ignored** | `png`, `jpg`, `pdf`, `zip`, `exe`, … | Passed through unchanged |
-| **Structured** | `json`, `yaml`, `yml` | Scanned as text |
-| **Markdown** | `md`, `mdx` | Scanned as text |
-| **Plain** | Everything else | Scanned as text |
+Binary files (`png`, `jpg`, `pdf`, `zip`, `exe`, etc.) are passed through
+unchanged. All other files (Markdown, JSON, YAML, plain text) are scanned.
 
 ## Placeholder linking
 
-Each `SecretRecord` in `secrets.json` tracks:
 
-| Field | Purpose |
-|-------|---------|
-| `placeholder` | Token string (`{{SECRET_001}}`) |
-| `kind` | `credential` or `pii` |
-| `name` | Human-readable name (e.g. `OPENAI_API_KEY`) |
-| `required_at_hatch` | Must be provided at hatch time |
-| `injection_mode` | `substitution` (in-file replace) or `env` |
-| `occurrences` | Which files contain this placeholder |
-
-This deterministic linking lets `nydus env` generate a template `.env` file
-listing exactly which secrets an egg needs.
+Every redacted value gets a unique placeholder token (e.g. `{{SECRET_001}}`).
+The Egg tracks which files contain each placeholder and whether the real
+value must be provided at hatch time. This lets `nydus env` generate a
+template `.env` listing exactly which secrets an Egg needs.
 
 ## Injection boundary (secrets IN)
+
 
 During hatch, secret injection is the **last transformation before writing to
 disk**:
@@ -97,6 +90,7 @@ disk**:
 
 ## Egg signing (Ed25519)
 
+
 Eggs can be signed with Ed25519 keys for integrity and authenticity.
 
 ### Key generation
@@ -105,8 +99,10 @@ Eggs can be signed with Ed25519 keys for integrity and authenticity.
 nydus keygen
 ```
 
+
 Creates `private.pem` (permissions 600) and `public.pem` in `~/.nydus/keys/`.
 Custom directory: `nydus keygen --dir ./my-keys/`.
+
 
 ### How signing works
 
@@ -118,6 +114,7 @@ When a private key exists at `~/.nydus/keys/private.pem` (or via
 3. Sign with Ed25519 private key
 4. Store in `manifest.signature` and `signature.json` inside the archive
 
+
 ### Verification
 
 Happens automatically during `nydus hatch`:
@@ -128,6 +125,7 @@ Happens automatically during `nydus hatch`:
 
 Check status anytime: `nydus inspect agent.egg`.
 
+
 ### SDK signing
 
 ```python
@@ -135,6 +133,7 @@ ny.save(egg, Path("agent.egg"), sign=True)
 ```
 
 ## LLM trust boundary
+
 
 The LLM is an untrusted component. It can modify content but never sees
 real secrets:
@@ -145,6 +144,7 @@ real secrets:
 4. If the LLM fails, the pipeline falls back to unrefined content
 
 ## Recommendations
+
 
 - Always use `REDACT true` (the default) for real agent projects
 - Generate signing keys for eggs shared between teams (`nydus keygen`)

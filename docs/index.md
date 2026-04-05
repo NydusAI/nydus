@@ -10,12 +10,18 @@ before packaging and restored on the other side.
 - **Hatch** the Egg into any supported target runtime
 - **Sign** Eggs with Ed25519 for integrity and share them via the **Nest** registry
 
+
+## Core concepts
+
+| Term | Meaning |
+|------|---------|
+| **Egg** | The portable artifact. In memory it is an `Egg` object (manifest + skills + memory + secrets). On disk it is a `.egg` ZIP archive. |
+| **Spawn** | Read source files, redact secrets/PII, parse structure, and package into an Egg. |
+| **Hatch** | Read an Egg, render target files, resolve secrets, and write to disk. |
+| **Nydusfile** | A small DSL file declaring what to spawn: source type, redaction settings, and merge operations. |
+
 ```bash
 pip install pynydus
-```
-
-```text
-Source → Spawn → Egg → Hatch → Target
 ```
 
 ```python
@@ -27,6 +33,7 @@ egg = ny.spawn()                    # reads ./Nydusfile
 ny.save(egg, Path("agent.egg"))     # portable .egg archive
 result = ny.hatch(egg, target="letta", output_dir=Path("out"))
 ```
+
 
 ```{toctree}
 :maxdepth: 2

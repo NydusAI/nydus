@@ -5,6 +5,7 @@ spawning. No conditionals, no loops, no side effects.
 
 ## Grammar
 
+
 ```text
 Nydusfile := Directive*
 Directive := FROM | SOURCE | REDACT | EXCLUDE
@@ -12,6 +13,7 @@ Directive := FROM | SOURCE | REDACT | EXCLUDE
 ```
 
 ## Example
+
 
 ```text
 FROM nydus/openclaw:0.3.0
@@ -29,11 +31,13 @@ LABEL soul.md persona
 
 ## Directives reference
 
+
 ### FROM
 
 ```text
 FROM <egg-reference>
 ```
+
 
 Versioned base egg from the Nest registry or a local `.egg` path. The base
 egg's contents are the starting point. ADD/SET/REMOVE modify it.
@@ -49,14 +53,17 @@ Examples:
 - `FROM nydus/openclaw:0.3.0`
 - `FROM ./base.egg`
 
+
 ### SOURCE
 
 ```text
 SOURCE <agent_type> <path>
 ```
 
+
 Declares a single input source (at most **one** per Nydusfile).
 Source types: `openclaw`, `zeroclaw`, `letta`.
+
 
 ### REDACT
 
@@ -64,8 +71,10 @@ Source types: `openclaw`, `zeroclaw`, `letta`.
 REDACT true|false
 ```
 
+
 Enable or disable secret scanning and PII redaction. Defaults to **`true`**
 when omitted. See {doc}`/guides/security` for details.
+
 
 ### EXCLUDE
 
@@ -73,11 +82,14 @@ when omitted. See {doc}`/guides/security` for details.
 EXCLUDE <memory-label>
 ```
 
-Repeatable. Names a **memory bucket** to omit from the final Egg:
-`persona`, `flow`, `context`, or `state`. Matching is case-insensitive.
+
+Repeatable. Names a memory label to omit from the final Egg:
+Memory[**persona**], Memory[**flow**], Memory[**context**], or
+Memory[**state**]. Matching is case-insensitive.
 
 Source files are still read and appear in `raw/`. Only structured memory
 for those buckets is dropped. Skills are not affected.
+
 
 ### LABEL
 
@@ -85,9 +97,11 @@ for those buckets is dropped. Skills are not affected.
 LABEL <pattern> <label>
 ```
 
-Repeatable. Override memory record labels based on source file pattern.
-Label must be one of: `persona`, `flow`, `context`, `state`. Duplicate
-patterns are rejected at parse time.
+
+Repeatable. Override the memory label assigned to records from matching
+source files. Label must be one of: `persona`, `flow`, `context`, `state`.
+Duplicate patterns are rejected at parse time.
+
 
 ### ADD
 
@@ -96,8 +110,10 @@ ADD <bucket> <content-or-path>
 ADD <bucket> "<inline text>"
 ```
 
+
 Add content to a bucket (`skill`, `memory`, `secret`). Accepts a file path,
 quoted inline string, or secret name.
+
 
 ### SET
 
@@ -105,8 +121,10 @@ quoted inline string, or secret name.
 SET <bucket>.<selector> "<value>"
 ```
 
+
 Override matching records in `memory` or `skill`. Not supported for `secret`
 (use REMOVE + ADD instead). All matching records are updated.
+
 
 ### REMOVE
 
@@ -118,16 +136,19 @@ Two forms:
 REMOVE <bucket> <identifier>
 ```
 
+
 **Source file drop** (requires `SOURCE`). Omits files from extraction:
 
 ```text
 REMOVE file <glob-pattern>
 ```
 
+
 Glob patterns match source file keys (e.g. `soul.md`, `skills/*.md`).
 Applied after read, before redaction and parse.
 
 ## Auto-generated Nydusfile
+
 
 If no `Nydusfile` exists, `nydus spawn` auto-detects the agent layout.
 If **multiple** agent types match (ambiguous), add a `Nydusfile` with an
@@ -135,13 +156,14 @@ explicit `SOURCE <agent_type> <path>` line.
 
 ## Static verification
 
+
 | Check | Description |
 |-------|-------------|
 | FROM shape valid | Value is not a bare source type |
 | FROM resolves | Base egg exists (local or registry) |
 | SOURCE types valid | Known spawner, at most one SOURCE |
 | ADD/SET target valid | References `skill`, `memory`, or `secret` |
-| LABEL value valid | Known MemoryLabel (`persona`, `flow`, `context`, `state`) |
+| LABEL value valid | Known label (`persona`, `flow`, `context`, `state`) |
 | LABEL pattern unique | Same pattern cannot have two labels |
 | PII safety warning | Warning if REDACT is `false` |
 | Merge ops require base | ADD/SET/REMOVE (merger) require FROM |
