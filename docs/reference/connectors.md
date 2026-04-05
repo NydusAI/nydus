@@ -9,14 +9,14 @@ For how to implement a new connector, see {doc}`/advanced/adding-connectors`.
 ## How connectors fit in the pipeline
 
 ```text
-Source files                                           Target files
-     │                                                      ▲
-     ▼                                                      │
- ┌──────────┐    ┌──────────┐    ┌───┐    ┌──────────┐    ┌──────────┐
+Source files                                               Target files
+     │                                                          ▲
+     ▼                                                          │
+ ┌───────────┐    ┌──────────┐    ┌───┐    ┌──────────┐    ┌──────────┐
  │ Redaction │ -> │ Spawner  │ -> │Egg│ -> │ Hatcher  │ -> │ Secrets  │
  │ (gitleaks │    │ .parse() │    │   │    │ .render()│    │ injection│
  │  presidio)│    │          │    │   │    │          │    │          │
- └──────────┘    └──────────┘    └───┘    └──────────┘    └──────────┘
+ └───────────┘    └──────────┘    └───┘    └──────────┘    └──────────┘
 
  Spawner receives        Spawner returns         Hatcher receives
  redacted file           skills + memory         the full Egg and
