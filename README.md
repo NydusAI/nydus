@@ -191,8 +191,6 @@ make check        # CI-style check (no writes)
 
 Full documentation is hosted at
 [pynydus.readthedocs.io](https://pynydus.readthedocs.io/en/latest/).
-API reference is generated with [Sphinx](https://www.sphinx-doc.org/) and
-[sphinx-autodoc2](https://sphinx-autodoc2.readthedocs.io/) (`make docs`).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
