@@ -52,7 +52,17 @@ path = ny.pull("myuser/my-agent", version="0.1.0", output="agent.egg")
 versions = ny.list_versions("myuser/my-agent")
 ```
 
+## Common errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `NYDUS_REGISTRY_URL is not set` | No registry URL configured | Set `NYDUS_REGISTRY_URL` in your environment or `.env` |
+| `401 Unauthorized` | Not logged in or token expired | Run `nydus login <username>` |
+| `409 Conflict` | Same `name:version` already exists | Bump the version string |
+| `404 Not Found` | Egg name or version does not exist on the registry | Check spelling with the registry web UI or API |
+| Connection refused / timeout | Registry server is down or unreachable | Verify `NYDUS_REGISTRY_URL` and network connectivity |
+
 ## Configuration
 
 Set **`NYDUS_REGISTRY_URL`** (required for push/pull) and optionally
-**`NYDUS_REGISTRY_AUTHOR`**. See {doc}`configuration`.
+**`NYDUS_REGISTRY_AUTHOR`**. See {doc}`/guides/configuration`.

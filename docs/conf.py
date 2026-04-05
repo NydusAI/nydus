@@ -49,5 +49,3 @@ intersphinx_mapping = {
 }
 
 exclude_patterns = ["_build"]
-
-suppress_warnings = ["ref.duplicate", "duplicate"]

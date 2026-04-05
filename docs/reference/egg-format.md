@@ -57,4 +57,4 @@ readability. `nydus.json` bridges internal IDs to skill slug directories.
 
 ## API reference
 
-See {doc}`api/schemas` for the full Pydantic model reference.
+See {doc}`/reference/api/schemas` for the full Pydantic model reference.

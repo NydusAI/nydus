@@ -3,23 +3,13 @@
 The {py:class}`~pynydus.client.client.Nydus` class is the main entry point for
 using PyNydus programmatically. It mirrors the CLI 1:1.
 
-**Hatch modes:** {py:meth}`~pynydus.client.client.Nydus.hatch` defaults to
-`mode="rebuild"` (regenerate files from structured egg modules). Use
-`mode="passthrough"` to replay the redacted `raw/` snapshot. Requires non-empty
-`egg.raw_artifacts` (for example from {py:meth}`~pynydus.client.client.Nydus.load`
-or after spawn). If you used {py:meth}`~pynydus.client.client.Nydus.load` with
-`include_raw=False`, `egg.raw_artifacts` is empty. Pass `raw_artifacts=` from
-{py:func}`pynydus.engine.packager.read_raw_artifacts` (for example
-`read_raw_artifacts(path)`), or reload with `include_raw=True`. {py:meth}`~pynydus.client.client.Nydus.hatch` defaults
-`raw_artifacts` and `spawn_log` from the egg when omitted.
-
 ## Example
 
 ```python
 from pathlib import Path
 from pynydus import Nydus
 
-ny = Nydus()  # reads NYDUS_* environment variables; see :doc:`/guides/configuration`
+ny = Nydus()
 
 # Spawn
 egg = ny.spawn()                         # reads ./Nydusfile
@@ -37,31 +27,27 @@ egg.inspect_secrets()
 report = ny.validate(egg)
 diff = ny.diff(egg_a, egg_b)
 
-# Hatch
+# Hatch (rebuild mode, the default)
 result = ny.hatch(
     egg,
     target="letta",
     output_dir=Path("out"),
     secrets="agent.env",
-    mode="rebuild",            # default; use mode="passthrough" to replay raw/
-    raw_artifacts=raw,         # optional; defaults to egg.raw_artifacts
-    spawn_log=spawn_log,       # optional; defaults to egg.spawn_log
 )
 print(result.output_dir, result.files_created, result.warnings)
-
-# Or load then hatch (same as CLI)
-egg = ny.load(Path("agent.egg"))
-result = ny.hatch(egg, target="openclaw", output_dir=Path("out"))
 ```
 
 **Notes:**
 
-- `spawn()` fills **`egg.raw_artifacts`** and **`egg.spawn_log`**. **`save()`**
-  writes them to the archive by default.
-- `load(..., include_raw=False)` leaves **`egg.raw_artifacts`** empty. Use **`read_raw_artifacts`**
-  or full **`load()`** when passthrough needs **`raw/`**.
-- `hatch()` defaults to **rebuild**. For **passthrough**, **`egg.raw_artifacts`**
-  must be non-empty (e.g. from **`load()`** or spawn), or pass **`raw_artifacts=`** explicitly.
+- `spawn()` fills `egg.raw_artifacts` and `egg.spawn_log`. `save()` writes
+  them to the archive by default.
+- `hatch()` defaults to **rebuild** mode (regenerate files from structured Egg
+  modules). Set `mode="passthrough"` to replay the redacted `raw/` snapshot
+  verbatim. Passthrough requires `egg.raw_artifacts` to be non-empty, which
+  it is after `spawn()` or `load()` with the default `include_raw=True`.
+- If you loaded with `load(..., include_raw=False)`, `raw_artifacts` is empty.
+  Either reload with `include_raw=True` or pass `raw_artifacts=` from
+  `pynydus.engine.packager.read_raw_artifacts(path)`.
 - Configure LLM and registry via environment variables (`NYDUS_LLM_TYPE`,
   `NYDUS_LLM_API_KEY`, `NYDUS_REGISTRY_URL`, etc.). See {doc}`/guides/configuration`.
 

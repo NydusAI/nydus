@@ -1,7 +1,7 @@
 # Quickstart
 
 Get from zero to a hatched agent in five steps. Assumes you have
-[installed PyNydus and gitleaks](install.md).
+{doc}`installed PyNydus and gitleaks <install>`.
 
 ## 1. Write a Nydusfile
 
@@ -41,7 +41,9 @@ nydus inspect agent.egg --secrets --logs
 
 ## 4. Hatch into another runtime
 
-Generate a secrets template, fill in real values, then hatch:
+During spawn, real secrets and PII were replaced with placeholders like
+`{{SECRET_001}}`. Before hatching, generate a template listing the secrets
+the Egg needs, fill in real values, then hatch:
 
 ```bash
 nydus env agent.egg -o agent.env

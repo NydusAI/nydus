@@ -155,7 +155,7 @@ tests/
 
 Set environment variables for LLM refinement and the Nest registry. Copy
 `[.env.example](.env.example)` to `.env` and fill in your values. See the
-[Configuration](docs/guides/configuration.md) doc for all available settings
+[Configuration](https://pynydus.readthedocs.io/en/latest/guides/configuration.html) doc for all available settings
 (`NYDUS_LLM_TYPE`, `NYDUS_LLM_API_KEY`, `NYDUS_REGISTRY_URL`, etc.).
 
 ## Development

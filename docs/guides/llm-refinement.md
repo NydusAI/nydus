@@ -5,7 +5,7 @@ requires **`NYDUS_LLM_TYPE`** (`provider/model`) and **`NYDUS_LLM_API_KEY`**
 together. If both are unset, refinement is skipped. If only one is set,
 `load_config()` raises `ValueError`.
 
-See {doc}`configuration` for all environment variables.
+See {doc}`/guides/configuration` for all environment variables.
 
 ## Spawn-side (phase 7)
 

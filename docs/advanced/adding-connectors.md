@@ -31,7 +31,8 @@ Create `pynydus/agents/slack/spawner.py` with `detect()`, `parse()`,
 ```python
 from pathlib import Path
 from pynydus.api.raw_types import ParseResult, RawMemory, RawSkill
-from pynydus.api.schemas import MemoryLabel, ValidationIssue, ValidationReport
+from pynydus.api.schemas import ValidationIssue, ValidationReport
+from pynydus.common.enums import MemoryLabel
 
 
 class SlackSpawner:

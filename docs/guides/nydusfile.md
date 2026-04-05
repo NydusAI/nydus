@@ -65,7 +65,7 @@ REDACT true|false
 ```
 
 Enable or disable secret scanning and PII redaction. Defaults to **`true`**
-when omitted. See {doc}`security` for details.
+when omitted. See {doc}`/guides/security` for details.
 
 ### EXCLUDE
 
