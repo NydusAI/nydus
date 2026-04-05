@@ -6,12 +6,12 @@ responsibilities, and key design decisions.
 ## Data flow
 
 ```
-┌─────────────┐     ┌───────────────────────────────────────────┐     ┌─────────────┐
+┌──────────────┐     ┌───────────────────────────────────────────┐     ┌──────────────┐
 │  Source      │     │              Nydus Engine                 │     │  Target      │
 │  (OpenClaw,  │     │                                           │     │  (OpenClaw,  │
 │   Letta,     │ ──> │ Spawn Pipeline ──> Egg ──> Hatch Pipeline │ ──> │   Letta,     │
 │   ZeroClaw)  │     │                                           │     │   ZeroClaw)  │
-└─────────────┘     └───────────────────────────────────────────┘     └─────────────┘
+└──────────────┘     └───────────────────────────────────────────┘     └──────────────┘
 ```
 
 An agent's state flows through two pipelines with a portable **Egg** in the
