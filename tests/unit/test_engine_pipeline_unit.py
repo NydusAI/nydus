@@ -28,8 +28,8 @@ def _oc_config(path: Path, **kw) -> NydusfileConfig:
 def src(tmp_path: Path) -> Path:
     d = tmp_path / "src"
     d.mkdir()
-    (d / "soul.md").write_text("I am helpful.")
-    (d / "knowledge.md").write_text("Sky is blue.")
+    (d / "SOUL.md").write_text("I am helpful.")
+    (d / "MEMORY.md").write_text("Sky is blue.")
     (d / "skill.md").write_text("# Greet\nSay hello.")
     return d
 
@@ -42,7 +42,7 @@ class TestSpawnerDispatch:
         assert egg.manifest.agent_type == AgentType.OPENCLAW
         assert len(egg.skills.skills) >= 1
         assert len(egg.memory.memory) >= 1
-        assert "soul.md" in raw
+        assert "SOUL.md" in raw
 
     def test_multi_source_rejected(self, tmp_path: Path):
         config = NydusfileConfig(
@@ -74,7 +74,7 @@ class TestRedaction:
         config = _oc_config(src, redact=False)
         egg, raw, _logs = spawn(config, nydusfile_dir=src.parent)
         assert len(egg.secrets.secrets) == 0
-        assert "I am helpful." in raw["soul.md"]
+        assert "I am helpful." in raw["SOUL.md"]
 
 
 class TestLLMRefinement:
@@ -175,9 +175,9 @@ class TestDirectives:
 
     @patch("pynydus.engine.pipeline.ensure_gitleaks_if_needed")
     def test_custom_label(self, _gl, src: Path):
-        config = _oc_config(src, redact=False, custom_labels={"soul.md": "flow"})
+        config = _oc_config(src, redact=False, custom_labels={"SOUL.md": "flow"})
         egg, _, _ = spawn(config, nydusfile_dir=src.parent)
-        soul_records = [m for m in egg.memory.memory if m.source_store == "soul.md"]
+        soul_records = [m for m in egg.memory.memory if m.source_store == "SOUL.md"]
         assert all(m.label == MemoryLabel.FLOW for m in soul_records)
 
     @patch("pynydus.engine.pipeline.ensure_gitleaks_if_needed")
@@ -185,10 +185,10 @@ class TestDirectives:
         config = NydusfileConfig(
             sources=[SourceDirective(agent_type="openclaw", path=str(src))],
             redact=False,
-            source_remove_globs=["soul.md"],
+            source_remove_globs=["SOUL.md"],
         )
         egg, raw, _ = spawn(config, nydusfile_dir=src.parent)
-        assert "soul.md" not in raw
+        assert "SOUL.md" not in raw
 
 
 class TestEmptySource:

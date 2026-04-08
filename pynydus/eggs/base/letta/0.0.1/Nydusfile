@@ -2,5 +2,3 @@ SOURCE letta ./
 REDACT true
 LABEL agent_state.json#memory.persona persona
 LABEL agent_state.json#memory.human context
-SET source_metadata.kind base_egg
-SET source_metadata.namespace nydus/letta

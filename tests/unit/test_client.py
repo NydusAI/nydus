@@ -34,8 +34,8 @@ from pynydus.common.enums import (
 def openclaw_source(tmp_path: Path) -> Path:
     src = tmp_path / "source"
     src.mkdir()
-    (src / "soul.md").write_text("I am a helpful assistant.\n\nI prefer short answers.\n")
-    (src / "knowledge.md").write_text("The sky is blue.\n")
+    (src / "SOUL.md").write_text("I am a helpful assistant.\n\nI prefer short answers.\n")
+    (src / "MEMORY.md").write_text("The sky is blue.\n")
     (src / "skill.md").write_text("# Search\nDo a web search.\n")
     return src
 
@@ -86,8 +86,8 @@ class TestSpawn:
         project.mkdir()
         agent = project / "agent"
         agent.mkdir()
-        (agent / "soul.md").write_text("I am helpful.\n")
-        (agent / "knowledge.md").write_text("Fact.\n")
+        (agent / "SOUL.md").write_text("I am helpful.\n")
+        (agent / "MEMORY.md").write_text("Fact.\n")
         (agent / "skill.md").write_text("# Search\nSearch the web.\n")
 
         nydusfile = project / "Nydusfile"

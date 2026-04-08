@@ -38,7 +38,7 @@ class TestSpawn:
             sources=[SourceDirective(agent_type="openclaw", path="./src")]
         )
         egg = make_egg()
-        raw = {"soul.md": "raw content"}
+        raw = {"SOUL.md": "raw content"}
         log_entries = [{"type": "test"}]
         mock_spawn.return_value = (egg, raw, {"spawn_log": log_entries})
         result = nydus.spawn(nydusfile=nf)
@@ -67,7 +67,7 @@ class TestHatch:
         mock_hatch.return_value = HatchResult(
             target=AgentType.OPENCLAW,
             output_dir=tmp_path,
-            files_created=["soul.md"],
+            files_created=["SOUL.md"],
             warnings=[],
         )
         egg = make_egg()

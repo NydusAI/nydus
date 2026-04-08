@@ -219,7 +219,7 @@ class TestSignedEggArchive:
         generate_keypair(key_dir)
         private_key = load_private_key(key_dir / "private.pem")
 
-        raw = {"soul.md": "I am an agent."}
+        raw = {"SOUL.md": "I am an agent."}
         log = [{"type": "redaction", "source": "memory:m1", "pii_type": "EMAIL"}]
 
         path = save(

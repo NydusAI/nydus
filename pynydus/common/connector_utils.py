@@ -7,7 +7,6 @@ lightweight parsing used by OpenClaw, ZeroClaw, and Letta connectors.
 from __future__ import annotations
 
 import json
-import re
 from datetime import UTC, datetime
 
 
@@ -93,17 +92,6 @@ def skill_to_filename(name: str) -> str:
         module = "tool"
     return f"{module}.py"
 
-
-def looks_like_placeholder(val: str) -> bool:
-    """Return whether *val* is already a redaction placeholder token.
-
-    Args:
-        val: String to inspect.
-
-    Returns:
-        ``True`` if *val* matches ``{{SECRET_NNN}}`` or ``{{PII_NNN}}``.
-    """
-    return bool(re.match(r"\{\{(SECRET|PII)_\d+\}\}", val))
 
 
 def parse_timestamp(val: object) -> datetime | None:

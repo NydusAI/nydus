@@ -149,14 +149,14 @@ def _make_base_egg() -> Egg:
                     text="I like cats",
                     label=MemoryLabel.PERSONA,
                     agent_type="openclaw",
-                    source_store="soul.md",
+                    source_store="SOUL.md",
                 ),
                 MemoryRecord(
                     id="mem_002",
                     text="The sky is blue",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 ),
             ]
         ),
@@ -356,8 +356,8 @@ class TestFromPlusSource:
 
         source_dir = tmp_path / "agent"
         source_dir.mkdir()
-        (source_dir / "soul.md").write_text("# Soul\nI love Python.")
-        (source_dir / "knowledge.md").write_text("# Knowledge\nPython is great.")
+        (source_dir / "SOUL.md").write_text("# Soul\nI love Python.")
+        (source_dir / "MEMORY.md").write_text("# Knowledge\nPython is great.")
 
         config = NydusfileConfig(
             base_egg=str(egg_path),
@@ -398,7 +398,7 @@ class TestFromPlusSource:
 
         source_dir = tmp_path / "agent"
         source_dir.mkdir()
-        (source_dir / "soul.md").write_text("# Soul\nI love music.")
+        (source_dir / "SOUL.md").write_text("# Soul\nI love music.")
 
         config = NydusfileConfig(
             base_egg=str(egg_path),

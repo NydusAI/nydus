@@ -42,7 +42,7 @@ def sample_memory_records() -> list[MemoryRecord]:
             text="I am a research assistant.",
             label=MemoryLabel.PERSONA,
             agent_type="openclaw",
-            source_store="soul.md",
+            source_store="SOUL.md",
             timestamp=datetime(2024, 1, 1, tzinfo=UTC),
         ),
         MemoryRecord(
@@ -50,7 +50,7 @@ def sample_memory_records() -> list[MemoryRecord]:
             text="I'm a research assistant that helps with papers.",
             label=MemoryLabel.PERSONA,
             agent_type="openclaw",
-            source_store="soul.md",
+            source_store="SOUL.md",
             timestamp=datetime(2024, 1, 2, tzinfo=UTC),
         ),
         MemoryRecord(
@@ -58,7 +58,7 @@ def sample_memory_records() -> list[MemoryRecord]:
             text="The capital of France is Paris.",
             label=MemoryLabel.STATE,
             agent_type="openclaw",
-            source_store="knowledge.md",
+            source_store="MEMORY.md",
         ),
     ]
 
@@ -131,7 +131,7 @@ class TestResponseModels:
 
     def test_adapted_files_output_valid(self):
         output = AdaptedFilesOutput(
-            files=[AdaptedFile(path="soul.md", content="Updated content")],
+            files=[AdaptedFile(path="SOUL.md", content="Updated content")],
             warnings=["Minor formatting issue"],
         )
         assert len(output.files) == 1
@@ -177,7 +177,7 @@ class TestRefineMemory:
         assert merged.id == "mem_merged_001"
         assert merged.label == MemoryLabel.PERSONA
         assert merged.agent_type == "openclaw"
-        assert merged.source_store == "soul.md"
+        assert merged.source_store == "SOUL.md"
         fact = result.memory[1]
         assert fact.id == "mem_003"
 
@@ -218,7 +218,7 @@ class TestRefineMemory:
                     text="Contact {{PII_001}} at {{PII_002}}.",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 ),
             ]
         )
@@ -319,17 +319,17 @@ class TestRefineHatch:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        file_dict = {"soul.md": "Original soul content", "skill.md": "Original skill content"}
+        file_dict = {"SOUL.md": "Original soul content", "skill.md": "Original skill content"}
 
         mock_completion.return_value = AdaptedFilesOutput(
             files=[
-                AdaptedFile(path="soul.md", content="Adapted soul content for Letta"),
+                AdaptedFile(path="SOUL.md", content="Adapted soul content for Letta"),
             ],
         )
 
         result = refine_hatch(file_dict, minimal_egg, llm_config)
 
-        assert result["soul.md"] == "Adapted soul content for Letta"
+        assert result["SOUL.md"] == "Adapted soul content for Letta"
         assert result["skill.md"] == "Original skill content"
 
     @patch("pynydus.engine.refinement.create_completion")
@@ -339,7 +339,7 @@ class TestRefineHatch:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        file_dict = {"soul.md": "Original content"}
+        file_dict = {"SOUL.md": "Original content"}
 
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
@@ -357,12 +357,12 @@ class TestRefineHatch:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        file_dict = {"soul.md": "Original content"}
+        file_dict = {"SOUL.md": "Original content"}
         mock_completion.return_value = None
 
         result = refine_hatch(file_dict, minimal_egg, llm_config)
 
-        assert result["soul.md"] == "Original content"
+        assert result["SOUL.md"] == "Original content"
         assert result is file_dict
 
     @patch("pynydus.engine.refinement.create_completion")
@@ -382,17 +382,17 @@ class TestRefineHatch:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        file_dict = {"soul.md": "Original"}
+        file_dict = {"SOUL.md": "Original"}
         mock_completion.return_value = AdaptedFilesOutput(
             files=[
-                AdaptedFile(path="soul.md", content="Adapted"),
+                AdaptedFile(path="SOUL.md", content="Adapted"),
                 AdaptedFile(path="malicious.md", content="Should not appear"),
             ],
         )
 
         result = refine_hatch(file_dict, minimal_egg, llm_config)
 
-        assert result["soul.md"] == "Adapted"
+        assert result["SOUL.md"] == "Adapted"
         assert "malicious.md" not in result
 
     @patch("pynydus.engine.refinement.create_completion")
@@ -402,19 +402,19 @@ class TestRefineHatch:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        file_dict = {"soul.md": "Reconstructed content"}
+        file_dict = {"SOUL.md": "Reconstructed content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
         refine_hatch(
             file_dict,
             minimal_egg,
             llm_config,
-            raw_artifacts={"soul.md": "Original raw content"},
+            raw_artifacts={"SOUL.md": "Original raw content"},
         )
 
         user_msg = mock_completion.call_args[1]["messages"][1]["content"]
         assert "Original raw content" in user_msg
-        assert "raw/soul.md" in user_msg
+        assert "raw/SOUL.md" in user_msg
 
     @patch("pynydus.engine.refinement.create_completion")
     def test_secrets_summary_included_in_prompt(
@@ -455,7 +455,7 @@ class TestRefineHatch:
                 ]
             ),
         )
-        file_dict = {"soul.md": "Content"}
+        file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
         refine_hatch(file_dict, egg, llm_config)
@@ -497,7 +497,7 @@ class TestTierSelection:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        file_dict = {"soul.md": "Content"}
+        file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
         refine_hatch(file_dict, minimal_egg, llm_config)

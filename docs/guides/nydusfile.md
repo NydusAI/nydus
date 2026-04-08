@@ -26,7 +26,7 @@ SET memory.label=persona "Prefers responses in Korean"
 REMOVE skill outdated-workflow
 REMOVE file *.log
 EXCLUDE state
-LABEL soul.md persona
+LABEL SOUL.md persona
 ```
 
 ## Directives reference
@@ -144,7 +144,7 @@ REMOVE file <glob-pattern>
 ```
 
 
-Glob patterns match source file keys (e.g. `soul.md`, `skills/*.md`).
+Glob patterns match source file keys (e.g. `SOUL.md`, `skills/*.md`).
 Applied after read, before redaction and parse.
 
 ## Auto-generated Nydusfile

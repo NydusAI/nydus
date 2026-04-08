@@ -68,8 +68,8 @@ class TestParseResult:
 
 class TestRenderResult:
     def test_with_files(self):
-        r = RenderResult(files={"soul.md": "content"})
-        assert r.files["soul.md"] == "content"
+        r = RenderResult(files={"SOUL.md": "content"})
+        assert r.files["SOUL.md"] == "content"
 
     def test_with_warnings(self):
         r = RenderResult(warnings=["something missing"])

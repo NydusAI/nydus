@@ -24,8 +24,8 @@ pytestmark = pytest.mark.integration
 def oc_with_secrets(tmp_path: Path) -> Path:
     src = tmp_path / "src"
     src.mkdir()
-    (src / "soul.md").write_text("I am a research assistant.\n\nContact: alex@example.com\n")
-    (src / "knowledge.md").write_text("The speed of light is 299792458 m/s.\n")
+    (src / "SOUL.md").write_text("I am a research assistant.\n\nContact: alex@example.com\n")
+    (src / "MEMORY.md").write_text("The speed of light is 299792458 m/s.\n")
     (src / "config.json").write_text(
         '{"aws_access_key_id": "AKIAYRWSSQ3BPTB4DX7Z", "model": "gpt-4"}\n'
     )
@@ -68,7 +68,7 @@ def test_redaction_roundtrip(oc_with_secrets: Path, tmp_path: Path):
 def test_no_redact(tmp_path: Path):
     src = tmp_path / "src"
     src.mkdir()
-    (src / "soul.md").write_text("I am an assistant.\n")
+    (src / "SOUL.md").write_text("I am an assistant.\n")
     (src / "config.json").write_text('{"key": "sk-secret-123"}\n')
 
     config = NydusfileConfig(

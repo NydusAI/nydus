@@ -56,7 +56,7 @@ def sample_partial() -> EggPartial:
                     text="A fact.",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 )
             ]
         ),
@@ -201,7 +201,7 @@ class TestHatchRefinementLogging:
         llm_config: LLMTierConfig,
     ):
         """refine_hatch forwards the log parameter to create_completion."""
-        file_dict = {"soul.md": "Content"}
+        file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
         hatch_log: list[dict] = []
@@ -218,7 +218,7 @@ class TestHatchRefinementLogging:
         llm_config: LLMTierConfig,
     ):
         """refine_hatch with no log argument passes log=None."""
-        file_dict = {"soul.md": "Content"}
+        file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
         refine_hatch(file_dict, minimal_egg, llm_config)

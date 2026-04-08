@@ -212,7 +212,7 @@ class TestUnpackSkillsFormat:
 class TestPackWithRawSkills:
     def test_skills_as_skill_md(self, tmp_path: Path):
         egg = _make_egg(skills=[_make_skill()])
-        egg_path = save(egg, tmp_path / "test", raw_artifacts={"soul.md": "hi"})
+        egg_path = save(egg, tmp_path / "test", raw_artifacts={"SOUL.md": "hi"})
         with zipfile.ZipFile(egg_path, "r") as zf:
             names = zf.namelist()
             skill_entries = [n for n in names if n.endswith("/SKILL.md")]
@@ -222,9 +222,9 @@ class TestPackWithRawSkills:
 
     def test_raw_artifacts_preserved(self, tmp_path: Path):
         egg = _make_egg(skills=[_make_skill()])
-        egg_path = save(egg, tmp_path / "test", raw_artifacts={"soul.md": "hi"})
+        egg_path = save(egg, tmp_path / "test", raw_artifacts={"SOUL.md": "hi"})
         artifacts = read_raw_artifacts(egg_path)
-        assert artifacts == {"soul.md": "hi"}
+        assert artifacts == {"SOUL.md": "hi"}
 
     def test_spawn_log_preserved(self, tmp_path: Path):
         egg = _make_egg()

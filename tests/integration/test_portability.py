@@ -27,10 +27,10 @@ AGENT_TYPES = [AgentType.OPENCLAW, AgentType.ZEROCLAW, AgentType.LETTA]
 
 def _write_openclaw(d: Path) -> Path:
     d.mkdir(parents=True, exist_ok=True)
-    (d / "soul.md").write_text("I am a research assistant.\n\nI prefer concise summaries.\n")
+    (d / "SOUL.md").write_text("I am a research assistant.\n\nI prefer concise summaries.\n")
     (d / "AGENTS.md").write_text("Follow structured output format.\n")
     (d / "USER.md").write_text("User prefers Python and Linux.\n")
-    (d / "knowledge.md").write_text("Python 3.12 released Oct 2023.\n")
+    (d / "MEMORY.md").write_text("Python 3.12 released Oct 2023.\n")
     (d / "skill.md").write_text("# Summarize\n\nProduce a 5-bullet summary.\n")
     return d
 
@@ -75,8 +75,8 @@ _WRITERS = {
 
 # Expectations per target for a non-empty egg
 _TARGET_EXPECTED_FILES = {
-    AgentType.OPENCLAW: {"soul.md", "skill.md", "knowledge.md"},
-    AgentType.ZEROCLAW: {"persona.md", "knowledge.md"},
+    AgentType.OPENCLAW: {"SOUL.md", "MEMORY.md"},
+    AgentType.ZEROCLAW: {"persona.md", "knowledge.md", ".zeroclaw/.keep"},
     AgentType.LETTA: {"agent_state.json"},
 }
 

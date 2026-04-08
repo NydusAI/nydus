@@ -127,15 +127,15 @@ class TestHatchRefinement:
     def test_only_changed_files(self, mock_comp, tier):
         mock_comp.return_value = AdaptedFilesOutput(
             files=[
-                AdaptedFile(path="soul.md", content="Refined soul."),
+                AdaptedFile(path="SOUL.md", content="Refined soul."),
             ]
         )
         egg = make_egg()
-        original = {"soul.md": "Original soul.", "knowledge.md": "A fact.", "agents.md": "Rules."}
+        original = {"SOUL.md": "Original soul.", "MEMORY.md": "A fact.", "AGENTS.md": "Rules."}
         result = refine_hatch(original, egg, tier)
-        assert result["soul.md"] == "Refined soul."
-        assert result["knowledge.md"] == "A fact."
-        assert result["agents.md"] == "Rules."
+        assert result["SOUL.md"] == "Refined soul."
+        assert result["MEMORY.md"] == "A fact."
+        assert result["AGENTS.md"] == "Rules."
 
 
 class TestPlaceholderSurvival:
@@ -148,7 +148,7 @@ class TestPlaceholderSurvival:
                     text="Contact {{PII_001}} at {{SECRET_001}}.",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="soul.md",
+                    source_store="SOUL.md",
                 )
             ]
         )
@@ -176,7 +176,7 @@ class TestGracefulDegradation:
                     text="Original.",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 )
             ]
         )
@@ -195,13 +195,13 @@ class TestGracefulDegradation:
     def test_unknown_paths_ignored(self, mock_comp, tier):
         mock_comp.return_value = AdaptedFilesOutput(
             files=[
-                AdaptedFile(path="soul.md", content="Adapted"),
+                AdaptedFile(path="SOUL.md", content="Adapted"),
                 AdaptedFile(path="malicious.md", content="Should not appear"),
             ]
         )
         egg = make_egg()
-        result = refine_hatch({"soul.md": "Original"}, egg, tier)
-        assert result["soul.md"] == "Adapted"
+        result = refine_hatch({"SOUL.md": "Original"}, egg, tier)
+        assert result["SOUL.md"] == "Adapted"
         assert "malicious.md" not in result
 
 
@@ -219,7 +219,7 @@ class TestPromptConstruction:
     def test_same_platform_polish(self, mock_comp, tier):
         mock_comp.return_value = AdaptedFilesOutput(files=[])
         egg = make_egg(agent_type=AgentType.OPENCLAW)
-        refine_hatch({"soul.md": "Content"}, egg, tier)
+        refine_hatch({"SOUL.md": "Content"}, egg, tier)
         call_args = mock_comp.call_args
         messages = call_args[1].get("messages") or call_args[0][2]
         assert "polish" in messages[0]["content"].lower()

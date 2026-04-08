@@ -22,8 +22,8 @@ pytestmark = pytest.mark.integration
 def openclaw_src(tmp_path: Path) -> Path:
     src = tmp_path / "src"
     src.mkdir()
-    (src / "soul.md").write_text("I am a research assistant.\n")
-    (src / "knowledge.md").write_text("Python 3.12 released Oct 2023.\n")
+    (src / "SOUL.md").write_text("I am a research assistant.\n")
+    (src / "MEMORY.md").write_text("Python 3.12 released Oct 2023.\n")
     (src / "skill.md").write_text("# Summarize\n\nProduce a summary.\n")
     return src
 
@@ -49,8 +49,8 @@ def test_signed_roundtrip(openclaw_src: Path, tmp_path: Path):
 
     out_dir = tmp_path / "hatched"
     result = hatch(loaded, target=AgentType.OPENCLAW, output_dir=out_dir)
-    assert "soul.md" in result.files_created
-    assert "skill.md" in result.files_created
+    assert "SOUL.md" in result.files_created
+    assert any(f.startswith("skills/") for f in result.files_created)
 
 
 def test_tampered_fails(openclaw_src: Path, tmp_path: Path):

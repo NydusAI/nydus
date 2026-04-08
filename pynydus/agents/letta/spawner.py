@@ -24,10 +24,6 @@ from pynydus.api.raw_types import (
     RawMemory,
     RawSkill,
 )
-from pynydus.api.schemas import (
-    ValidationIssue,
-    ValidationReport,
-)
 from pynydus.common.connector_utils import (
     parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
 )
@@ -179,95 +175,6 @@ class LettaSpawner:
             conn.close()
 
         return ParseResult(skills=skills, memory=memories)
-
-    def validate(self, input_path: Path) -> ValidationReport:
-        """Validate a Letta source before spawning."""
-        issues: list[ValidationIssue] = []
-
-        if input_path.is_file():
-            if input_path.suffix == ".db":
-                if not self._is_letta_db(input_path):
-                    issues.append(
-                        ValidationIssue(
-                            level="error",
-                            message=f"Not a valid Letta database: {input_path}",
-                            location=str(input_path),
-                        )
-                    )
-                return ValidationReport(
-                    valid=not any(i.level == "error" for i in issues), issues=issues
-                )
-            if input_path.suffix == ".af":
-                if not self._is_agent_file(input_path):
-                    issues.append(
-                        ValidationIssue(
-                            level="error",
-                            message=f"Not a valid Letta AgentFile: {input_path}",
-                            location=str(input_path),
-                        )
-                    )
-                return ValidationReport(
-                    valid=not any(i.level == "error" for i in issues), issues=issues
-                )
-            issues.append(
-                ValidationIssue(
-                    level="error",
-                    message=f"Not a directory, .db, or .af file: {input_path}",
-                    location=str(input_path),
-                )
-            )
-            return ValidationReport(valid=False, issues=issues)
-
-        if not input_path.is_dir():
-            issues.append(
-                ValidationIssue(
-                    level="error",
-                    message=f"Not a directory, .db, or .af file: {input_path}",
-                    location=str(input_path),
-                )
-            )
-            return ValidationReport(valid=False, issues=issues)
-
-        has_state = any((input_path / f).exists() for f in _AGENT_STATE_FILES)
-        has_db = any((input_path / f).exists() for f in _DB_FILES)
-        has_marker = (input_path / _LETTA_MARKER).is_dir()
-        has_tools = (input_path / "tools").is_dir()
-        has_af = bool(list(input_path.glob("*.af")))
-
-        if not has_state and not has_db and not has_marker and not has_tools and not has_af:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message=(
-                        "No agent_state.json, agent.db, .af, .letta/ marker, or tools/ "
-                        "found, Egg will be sparse"
-                    ),
-                    location=str(input_path),
-                )
-            )
-
-        if has_state:
-            state_path = input_path / "agent_state.json"
-            try:
-                data = json.loads(state_path.read_text())
-                if not isinstance(data, dict):
-                    issues.append(
-                        ValidationIssue(
-                            level="error",
-                            message="agent_state.json must be a JSON object",
-                            location=str(state_path),
-                        )
-                    )
-            except json.JSONDecodeError as exc:
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message=f"Invalid JSON in agent_state.json: {exc}",
-                        location=str(state_path),
-                    )
-                )
-
-        return ValidationReport(valid=not any(i.level == "error" for i in issues), issues=issues)
 
     # ------------------------------------------------------------------
     # AgentFile (.af) parsing

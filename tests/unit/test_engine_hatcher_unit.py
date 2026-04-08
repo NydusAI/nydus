@@ -22,7 +22,7 @@ def _mock_render():
     with patch("pynydus.engine.hatcher._get_hatcher") as mock_get:
         mock_hatcher = MagicMock()
         mock_hatcher.render.return_value = RenderResult(
-            files={"soul.md": "original content\n"}, warnings=[]
+            files={"SOUL.md": "original content\n"}, warnings=[]
         )
         mock_get.return_value = mock_hatcher
         yield mock_hatcher
@@ -34,8 +34,8 @@ class TestRebuildMode:
 
         egg = make_egg()
         result = hatch(egg, target=AgentType.OPENCLAW, output_dir=tmp_path / "out")
-        assert "soul.md" in result.files_created
-        assert (tmp_path / "out" / "soul.md").read_text() == "original content\n"
+        assert "SOUL.md" in result.files_created
+        assert (tmp_path / "out" / "SOUL.md").read_text() == "original content\n"
 
 
 class TestPassthroughMode:
@@ -43,7 +43,7 @@ class TestPassthroughMode:
         from pynydus.engine.hatcher import hatch
 
         egg = make_egg()
-        raw = {"soul.md": "raw content"}
+        raw = {"SOUL.md": "raw content"}
         hatch(
             egg,
             target=AgentType.OPENCLAW,
@@ -51,7 +51,7 @@ class TestPassthroughMode:
             mode=HatchMode.PASSTHROUGH,
             raw_artifacts=raw,
         )
-        assert (tmp_path / "out" / "soul.md").read_text() == "raw content"
+        assert (tmp_path / "out" / "SOUL.md").read_text() == "raw content"
 
     def test_mismatch_rejected(self, tmp_path: Path):
         from pynydus.engine.hatcher import hatch
@@ -125,7 +125,7 @@ class TestLLMRefinementHatch:
         egg = make_egg()
         out = tmp_path / "out"
         hatch(egg, target=AgentType.OPENCLAW, output_dir=out, llm_config=tier)
-        assert "refined content" in (out / "soul.md").read_text()
+        assert "refined content" in (out / "SOUL.md").read_text()
 
     def test_without_llm(self, _mock_render, tmp_path: Path):
         from pynydus.engine.hatcher import hatch
@@ -133,7 +133,7 @@ class TestLLMRefinementHatch:
         egg = make_egg()
         out = tmp_path / "out"
         hatch(egg, target=AgentType.OPENCLAW, output_dir=out)
-        assert "original content" in (out / "soul.md").read_text()
+        assert "original content" in (out / "SOUL.md").read_text()
 
 
 class TestHatchLog:

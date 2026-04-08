@@ -33,22 +33,22 @@ class TestApplyCustomLabels:
                     text="x",
                     label=MemoryLabel.STATE,
                     agent_type="x",
-                    source_store="soul.md",
+                    source_store="SOUL.md",
                 ),
                 MemoryRecord(
                     id="m2",
                     text="y",
                     label=MemoryLabel.STATE,
                     agent_type="x",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 ),
             ]
         )
         _apply_custom_labels(
             memory,
             {
-                "soul*": MemoryLabel.PERSONA.value,
-                "knowledge*": MemoryLabel.STATE.value,
+                "SOUL*": MemoryLabel.PERSONA.value,
+                "MEMORY*": MemoryLabel.STATE.value,
             },
         )
         assert memory.memory[0].label == MemoryLabel.PERSONA
@@ -66,7 +66,7 @@ class TestApplyCustomLabels:
                 ),
             ]
         )
-        _apply_custom_labels(memory, {"soul*": MemoryLabel.PERSONA.value})
+        _apply_custom_labels(memory, {"SOUL*": MemoryLabel.PERSONA.value})
         assert memory.memory[0].label == MemoryLabel.FLOW
 
     def test_first_match_wins(self):
@@ -77,14 +77,14 @@ class TestApplyCustomLabels:
                     text="x",
                     label=MemoryLabel.STATE,
                     agent_type="x",
-                    source_store="soul.md",
+                    source_store="SOUL.md",
                 ),
             ]
         )
         _apply_custom_labels(
             memory,
             {
-                "soul*": MemoryLabel.PERSONA.value,
+                "SOUL*": MemoryLabel.PERSONA.value,
                 "*.md": MemoryLabel.STATE.value,
             },
         )
@@ -98,14 +98,14 @@ class TestApplyCustomLabels:
                     text="x",
                     label=MemoryLabel.PERSONA,
                     agent_type="x",
-                    source_store="soul.md",
+                    source_store="SOUL.md",
                 ),
                 MemoryRecord(
                     id="m2",
                     text="y",
                     label=MemoryLabel.STATE,
                     agent_type="x",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 ),
                 MemoryRecord(
                     id="m3",

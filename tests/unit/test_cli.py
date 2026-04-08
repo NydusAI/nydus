@@ -21,8 +21,8 @@ runner = CliRunner()
 @pytest.fixture
 def openclaw_source(tmp_path: Path) -> Path:
     """Create a minimal OpenClaw source directory."""
-    (tmp_path / "soul.md").write_text("# Soul\nI am a helpful AI assistant.")
-    (tmp_path / "knowledge.md").write_text("# Knowledge\nPython is a language.")
+    (tmp_path / "SOUL.md").write_text("# Soul\nI am a helpful AI assistant.")
+    (tmp_path / "MEMORY.md").write_text("# Knowledge\nPython is a language.")
     return tmp_path
 
 
@@ -354,7 +354,7 @@ class TestEnvCommand:
                         text="I like Python",
                         label=MemoryLabel.PERSONA,
                         agent_type="openclaw",
-                        source_store="soul.md",
+                        source_store="SOUL.md",
                     ),
                 ]
             ),

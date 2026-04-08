@@ -220,8 +220,8 @@ class TestPipelineIntegration:
     def openclaw_project(self, tmp_path: Path) -> Path:
         src = tmp_path / "source"
         src.mkdir()
-        (src / "soul.md").write_text("I am a helpful assistant.\n")
-        (src / "knowledge.md").write_text("The sky is blue.\n")
+        (src / "SOUL.md").write_text("I am a helpful assistant.\n")
+        (src / "MEMORY.md").write_text("The sky is blue.\n")
         (src / "skill.md").write_text("# Research\nDo research.\n")
         return src
 
@@ -293,6 +293,14 @@ class TestPipelineIntegration:
 
 
 class TestLLMGracefulCLI:
+    @pytest.fixture
+    def openclaw_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "source"
+        src.mkdir()
+        (src / "SOUL.md").write_text("I am a helpful assistant.\n")
+        (src / "MEMORY.md").write_text("The sky is blue.\n")
+        return src
+
     def test_spawn_succeeds_without_llm_env(
         self, openclaw_project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):

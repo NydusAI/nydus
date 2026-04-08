@@ -4,10 +4,16 @@ Resolves Nydusfile directives, loads sources, runs gitleaks and Presidio on file
 text, invokes the platform spawner, optionally runs LLM refinement, then
 builds manifest and ``Egg`` records.
 
-Steps (high level):
-    Resolve ``FROM`` / ``SOURCE``, load base egg if present; read files per
-    source; secret scan (``{{SECRET_NNN}}``); PII redact (``{{PII_NNN}}``);
-    ``spawner.parse``; normalize to records; refine; package manifest + Egg.
+Pipeline steps:
+    1. Resolve base egg (FROM directive)
+    2. Read source files
+    3. Redaction (file filtering, secret scan, PII redaction)
+    4. Parse sources via spawner connector
+    5. Build structured records (skills, memory, secrets)
+    6. Merge with base egg (FROM + SOURCE)
+    7. LLM refinement (optional)
+    8. Post-processing (custom labels, memory exclusions)
+    9. Package egg
 """
 
 from __future__ import annotations
@@ -105,34 +111,6 @@ def _build_context(
     )
 
 
-def ensure_gitleaks_if_needed(config: NydusfileConfig) -> None:
-    """Raise if gitleaks is required but not installed.
-
-    Secret scanning is required when ``REDACT`` is true (the default) and
-    at least one ``SOURCE`` directive is present.  FROM-only spawns and
-    ``REDACT false`` pipelines skip file-level scanning entirely.
-    """
-    if not config.redact or not config.sources:
-        return
-
-    from pynydus.security.gitleaks import find_gitleaks
-
-    if find_gitleaks() is None:
-        raise GitleaksNotFoundError(
-            "Secret scanning requires gitleaks but the binary was not found. "
-            "Install gitleaks (https://github.com/gitleaks/gitleaks#installing) "
-            "or set $NYDUS_GITLEAKS_PATH. To skip scanning, use REDACT false."
-        )
-
-
-def _resolve_source_entry_path(path_str: str, nydusfile_dir: Path) -> Path:
-    """Resolve a path from a Nydusfile SOURCE (or similar) entry."""
-    expanded = Path(path_str).expanduser()
-    if expanded.is_absolute():
-        return expanded.resolve()
-    return (nydusfile_dir / path_str).resolve()
-
-
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -161,6 +139,17 @@ def spawn(
         )
     ctx = _build_context(config, nydusfile_dir, llm_config)
 
+    ctx.spawn_log.append(
+        {
+            "type": "pipeline_start",
+            "source_platform": ctx.sources[0].agent_type if ctx.sources else None,
+            "base_egg": ctx.base_egg,
+            "redact": ctx.redact,
+            "sources": [s.path for s in ctx.sources],
+        }
+    )
+
+    # Step 1: Resolve base egg (FROM directive)
     base_partial, base_agent_type = _resolve_base_egg(ctx)
     ctx.agent_type = base_agent_type or AgentType(ctx.sources[0].agent_type)
 
@@ -171,10 +160,10 @@ def spawn(
         secrets_module = base_partial.secrets
 
         if ctx.custom_labels:
-            _apply_custom_labels(memory_module, ctx.custom_labels)
+            _apply_custom_labels(memory_module, ctx.custom_labels, spawn_log=ctx.spawn_log)
         if ctx.excluded_memory_labels:
             memory_module = _drop_memory_records_with_excluded_labels(
-                memory_module, ctx.excluded_memory_labels
+                memory_module, ctx.excluded_memory_labels, spawn_log=ctx.spawn_log
             )
         egg = _package_egg(
             ctx,
@@ -186,12 +175,10 @@ def spawn(
         logs = {"spawn_log": ctx.spawn_log}
         return egg, base_partial.raw_artifacts, logs
 
-    # FROM+SOURCE or SOURCE-only: run the full extraction pipeline.
-
+    # Step 2: Read source files
     groups = _read_source_files(ctx)
 
-    # Per-group: secret scan (gitleaks) → PII redact (Presidio).
-    # Shared counters ensure globally unique placeholders across groups.
+    # Step 3: Redaction (file filtering, secret scan, PII)
     secret_counter = 1
     pii_counter = 1
     all_secret_records: list[SecretRecord] = []
@@ -199,7 +186,18 @@ def spawn(
 
     for i, (src_type, group_files) in enumerate(groups):
         if ctx.source_remove_globs:
+            before_keys = set(group_files.keys())
             group_files = _filter_files_by_patterns(group_files, ctx.source_remove_globs)
+            removed = sorted(before_keys - set(group_files.keys()))
+            if removed:
+                ctx.spawn_log.append(
+                    {
+                        "type": "files_removed",
+                        "patterns": ctx.source_remove_globs,
+                        "removed": removed,
+                        "remaining": len(group_files),
+                    }
+                )
 
         if ctx.redact:
             group_files, credential_records, secret_counter = _scan_secrets_gitleaks(
@@ -218,10 +216,31 @@ def spawn(
 
         groups[i] = (src_type, group_files)
 
+    # Step 4: Parse sources via spawner connector
     parse_result = _parse_sources(groups, ctx)
 
+    # Step 5: Build structured records
     skills_module = _build_skills_module_from_parse(parse_result, ctx.agent_type)
     memory_module = _build_memory_module_from_parse(parse_result, ctx.agent_type)
+
+    ctx.spawn_log.append(
+        {
+            "type": "records_built",
+            "skills": [
+                {"id": s.id, "name": s.name, "source_file": s.metadata.get("source_file")}
+                for s in skills_module.skills
+            ],
+            "memory": [
+                {
+                    "id": m.id,
+                    "label": m.label.value,
+                    "source_store": m.source_store,
+                    "text_length": len(m.text),
+                }
+                for m in memory_module.memory
+            ],
+        }
+    )
 
     all_redaction_records = all_secret_records + all_pii_records
     seen_placeholders: set[str] = set()
@@ -232,11 +251,29 @@ def spawn(
             seen_placeholders.add(s.placeholder)
     secrets_module = SecretsModule(secrets=deduped_secrets)
 
+    # Step 6: Merge with base egg (FROM + SOURCE)
     if base_partial is not None:
+        skills_before = len(skills_module.skills)
+        memory_before = len(memory_module.memory)
+        secrets_before = len(secrets_module.secrets)
+
         skills_module = _merge_skills(base_partial.skills, skills_module)
         memory_module = _merge_memory(base_partial.memory, memory_module)
         secrets_module = _merge_secrets(base_partial.secrets, secrets_module)
 
+        ctx.spawn_log.append(
+            {
+                "type": "base_merge",
+                "skills_before": skills_before,
+                "skills_after": len(skills_module.skills),
+                "memory_before": memory_before,
+                "memory_after": len(memory_module.memory),
+                "secrets_before": secrets_before,
+                "secrets_after": len(secrets_module.secrets),
+            }
+        )
+
+    # Step 7: LLM refinement (optional)
     if ctx.llm_config is not None:
         from pynydus.engine.refinement import refine_memory, refine_skills
 
@@ -245,13 +282,15 @@ def spawn(
         if memory_module.memory:
             memory_module = refine_memory(memory_module, ctx.llm_config, spawn_log=ctx.spawn_log)
 
+    # Step 8: Post-processing (custom labels, memory exclusions)
     if ctx.custom_labels:
-        _apply_custom_labels(memory_module, ctx.custom_labels)
+        _apply_custom_labels(memory_module, ctx.custom_labels, spawn_log=ctx.spawn_log)
     if ctx.excluded_memory_labels:
         memory_module = _drop_memory_records_with_excluded_labels(
-            memory_module, ctx.excluded_memory_labels
+            memory_module, ctx.excluded_memory_labels, spawn_log=ctx.spawn_log
         )
 
+    # Step 9: Package egg
     source_metadata = parse_result.source_metadata or {"source_dir": str(ctx.nydusfile_dir)}
 
     egg = _package_egg(
@@ -271,8 +310,28 @@ def spawn(
 
 
 # ---------------------------------------------------------------------------
-# Source resolution
+# Step 1 helpers: Base egg resolution
 # ---------------------------------------------------------------------------
+
+
+def ensure_gitleaks_if_needed(config: NydusfileConfig) -> None:
+    """Raise if gitleaks is required but not installed.
+
+    Secret scanning is required when ``REDACT`` is true (the default) and
+    at least one ``SOURCE`` directive is present.  FROM-only spawns and
+    ``REDACT false`` pipelines skip file-level scanning entirely.
+    """
+    if not config.redact or not config.sources:
+        return
+
+    from pynydus.security.gitleaks import find_gitleaks
+
+    if find_gitleaks() is None:
+        raise GitleaksNotFoundError(
+            "Secret scanning requires gitleaks but the binary was not found. "
+            "Install gitleaks (https://github.com/gitleaks/gitleaks#installing) "
+            "or set $NYDUS_GITLEAKS_PATH. To skip scanning, use REDACT false."
+        )
 
 
 def _resolve_base_egg(
@@ -299,12 +358,70 @@ def _resolve_base_egg(
     base = load_base_egg(base_ref)
     partial = merge(base, ctx.merge_ops, base_dir=ctx.nydusfile_dir)
     partial.source_metadata["base_egg"] = ctx.base_egg
+
+    ctx.spawn_log.append(
+        {
+            "type": "base_egg_loaded",
+            "ref": ctx.base_egg,
+            "agent_type": base.manifest.agent_type,
+            "skills": len(partial.skills.skills),
+            "memory": len(partial.memory.memory),
+            "secrets": len(partial.secrets.secrets),
+        }
+    )
+
     return partial, base.manifest.agent_type
 
 
+def _is_registry_ref(ref: str) -> bool:
+    """Check if a base egg reference looks like a registry ref (name:version)."""
+    if ref.endswith(".egg"):
+        return False
+    if ref.startswith(("./", "/", "\\")):
+        return False
+    return ":" in ref
+
+
+def _pull_registry_egg(ref: str) -> str:
+    """Pull a registry egg to a temp file and return its path."""
+    import tempfile
+
+    from pynydus.api.errors import ConfigError, RegistryError
+    from pynydus.config import load_config
+    from pynydus.remote.registry import NestClient
+
+    parts = ref.rsplit(":", 1)
+    if len(parts) != 2 or not parts[1]:
+        raise RegistryError(f"Invalid registry reference: {ref}. Expected name:version.")
+
+    name, version = parts
+
+    config = load_config()
+    if config.registry is None:
+        raise ConfigError(
+            f"Cannot resolve registry reference '{ref}': set NYDUS_REGISTRY_URL "
+            "(and optionally NYDUS_REGISTRY_AUTHOR)."
+        )
+
+    client = NestClient(config.registry.url, author=config.registry.author)
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="nydus_base_"))
+    egg_path = tmp_dir / f"{name.replace('/', '_')}_{version}.egg"
+
+    return str(client.pull(name, version=version, output_path=egg_path))
+
+
 # ---------------------------------------------------------------------------
-# File reading
+# Step 2 helpers: Source file reading
 # ---------------------------------------------------------------------------
+
+
+def _resolve_source_entry_path(path_str: str, nydusfile_dir: Path) -> Path:
+    """Resolve a path from a Nydusfile SOURCE (or similar) entry."""
+    expanded = Path(path_str).expanduser()
+    if expanded.is_absolute():
+        return expanded.resolve()
+    return (nydusfile_dir / path_str).resolve()
 
 
 def _read_source_files(
@@ -325,6 +442,16 @@ def _read_source_files(
         patterns = getattr(spawner, "FILE_PATTERNS", ["*.md", "*.json", "*.yaml", "*.yml", "*.txt"])
         src_files = _read_files_from_path(resolved, patterns)
         groups.append((at, src_files))
+
+        ctx.spawn_log.append(
+            {
+                "type": "source_files_read",
+                "agent_type": at.value,
+                "path": str(resolved),
+                "files": sorted(src_files.keys()),
+                "count": len(src_files),
+            }
+        )
 
     return groups
 
@@ -357,8 +484,18 @@ def _read_files_from_path(root: Path, patterns: list[str]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Secret scan (gitleaks)
+# Step 3 helpers: Redaction (file filtering, secret scan, PII)
 # ---------------------------------------------------------------------------
+
+
+def _filter_files_by_patterns(files: dict[str, str], patterns: list[str]) -> dict[str, str]:
+    """Remove files whose keys match any exclude glob."""
+    import fnmatch
+
+    def _matches(name: str) -> bool:
+        return any(fnmatch.fnmatch(name, pat) for pat in patterns)
+
+    return {k: v for k, v in files.items() if not _matches(k)}
 
 
 def _scan_secrets_gitleaks(
@@ -415,11 +552,6 @@ def _scan_secrets_gitleaks(
     return redacted, credential_records, next_idx
 
 
-# ---------------------------------------------------------------------------
-# PII redaction
-# ---------------------------------------------------------------------------
-
-
 def _redact_pii(
     files: dict[str, str],
     ctx: PipelineContext,
@@ -466,8 +598,32 @@ def _redact_pii(
 
 
 # ---------------------------------------------------------------------------
-# Spawner dispatch
+# Step 4 helpers: Spawner dispatch + parsing
 # ---------------------------------------------------------------------------
+
+
+def _instantiate_spawner(module: str, class_name: str):  # noqa: ANN202
+    mod = __import__(module, fromlist=[class_name])
+    return getattr(mod, class_name)()
+
+
+def _get_spawner(agent_type: AgentType):  # noqa: ANN202
+    """Return the spawner connector for the given agent type."""
+    _SPAWNERS = {
+        AgentType.OPENCLAW: lambda: _instantiate_spawner(
+            "pynydus.agents.openclaw.spawner", "OpenClawSpawner"
+        ),
+        AgentType.LETTA: lambda: _instantiate_spawner(
+            "pynydus.agents.letta.spawner", "LettaSpawner"
+        ),
+        AgentType.ZEROCLAW: lambda: _instantiate_spawner(
+            "pynydus.agents.zeroclaw.spawner", "ZeroClawSpawner"
+        ),
+    }
+    factory = _SPAWNERS.get(agent_type)
+    if factory is None:
+        raise ConnectorError(f"No spawner available for: {agent_type}")
+    return factory()
 
 
 def _parse_sources(
@@ -493,11 +649,31 @@ def _parse_sources(
         combined.mcp_configs.update(result.mcp_configs)
         combined.source_metadata.update(result.source_metadata)
 
+        ctx.spawn_log.append(
+            {
+                "type": "spawner_parse",
+                "agent_type": src_type.value,
+                "skills": [
+                    {"name": s.name, "source_file": s.source_file}
+                    for s in result.skills
+                ],
+                "memory": [
+                    {
+                        "source_file": m.source_file,
+                        "label": m.label.value if m.label else None,
+                        "text_length": len(m.text),
+                    }
+                    for m in result.memory
+                ],
+                "source_metadata": dict(result.source_metadata),
+            }
+        )
+
     return combined
 
 
 # ---------------------------------------------------------------------------
-# Record building
+# Step 5 helpers: Record building
 # ---------------------------------------------------------------------------
 
 
@@ -546,39 +722,108 @@ def _build_memory_module_from_parse(
 
 
 # ---------------------------------------------------------------------------
-# Source file drops (REMOVE file <glob>)
+# Step 6 helpers: Base egg merging (FROM + SOURCE)
 # ---------------------------------------------------------------------------
 
 
-def _filter_files_by_patterns(files: dict[str, str], patterns: list[str]) -> dict[str, str]:
-    """Remove files whose keys match any exclude glob."""
+def _merge_skills(base: SkillsModule, extracted: SkillsModule) -> SkillsModule:
+    """Combine base egg skills with freshly extracted skills, re-numbering IDs."""
+    combined = list(base.skills) + list(extracted.skills)
+    for i, skill in enumerate(combined, start=1):
+        skill.id = f"skill_{i:03d}"
+    mcp = dict(base.mcp_configs)
+    mcp.update(extracted.mcp_configs)
+    return SkillsModule(skills=combined, mcp_configs=mcp)
+
+
+def _merge_memory(base: MemoryModule, extracted: MemoryModule) -> MemoryModule:
+    """Combine base egg memory with freshly extracted memory, re-numbering IDs."""
+    combined = list(base.memory) + list(extracted.memory)
+    for i, rec in enumerate(combined, start=1):
+        rec.id = f"mem_{i:03d}"
+    return MemoryModule(memory=combined)
+
+
+def _merge_secrets(
+    base: SecretsModule,
+    extracted: SecretsModule,
+) -> SecretsModule:
+    """Combine base egg secrets with extracted secrets, deduplicating by name."""
+    seen_names: set[str] = set()
+    combined: list[SecretRecord] = []
+    for s in list(base.secrets) + list(extracted.secrets):
+        if s.name not in seen_names:
+            combined.append(s)
+            seen_names.add(s.name)
+    for i, s in enumerate(combined, start=1):
+        s.id = f"secret_{i:03d}"
+    return SecretsModule(secrets=combined)
+
+
+# ---------------------------------------------------------------------------
+# Step 8 helpers: Post-processing (custom labels, memory exclusions)
+# ---------------------------------------------------------------------------
+
+
+def _apply_custom_labels(
+    memory: MemoryModule,
+    custom_labels: dict[str, str],
+    spawn_log: list[dict] | None = None,
+) -> None:
+    """Override memory record labels based on source_store pattern matching."""
     import fnmatch
 
-    def _matches(name: str) -> bool:
-        return any(fnmatch.fnmatch(name, pat) for pat in patterns)
-
-    return {k: v for k, v in files.items() if not _matches(k)}
-
-
-# ---------------------------------------------------------------------------
-# Memory exclusion (EXCLUDE directive)
-# ---------------------------------------------------------------------------
+    for rec in memory.memory:
+        if not rec.source_store:
+            continue
+        for pattern, label_str in custom_labels.items():
+            if fnmatch.fnmatch(rec.source_store, pattern):
+                old_label = rec.label.value
+                rec.label = MemoryLabel(label_str)
+                if spawn_log is not None:
+                    spawn_log.append(
+                        {
+                            "type": "label_override",
+                            "record_id": rec.id,
+                            "source_store": rec.source_store,
+                            "pattern": pattern,
+                            "old_label": old_label,
+                            "new_label": label_str,
+                        }
+                    )
+                break
 
 
 def _drop_memory_records_with_excluded_labels(
     memory: MemoryModule,
     excluded: list[MemoryLabel],
+    spawn_log: list[dict] | None = None,
 ) -> MemoryModule:
     """Remove memory records whose label is listed in ``excluded``."""
     if not excluded:
         return memory
     excluded_set = set(excluded)
+    dropped = [r for r in memory.memory if r.label in excluded_set]
     kept = [r for r in memory.memory if r.label not in excluded_set]
+
+    if spawn_log is not None and dropped:
+        spawn_log.append(
+            {
+                "type": "memory_excluded",
+                "excluded_labels": [l.value for l in excluded],
+                "dropped": [
+                    {"id": r.id, "label": r.label.value, "source_store": r.source_store}
+                    for r in dropped
+                ],
+                "kept": len(kept),
+            }
+        )
+
     return MemoryModule(memory=kept)
 
 
 # ---------------------------------------------------------------------------
-# Filtering and packaging
+# Step 9 helpers: Packaging
 # ---------------------------------------------------------------------------
 
 
@@ -619,138 +864,22 @@ def _package_egg(
         sources=sources,
     )
 
-    return Egg(
+    egg = Egg(
         manifest=manifest,
         skills=skills,
         memory=memory,
         secrets=secrets,
     )
 
+    ctx.spawn_log.append(
+        {
+            "type": "egg_packaged",
+            "agent_type": ctx.agent_type.value if ctx.agent_type else None,
+            "skills": len(skills.skills),
+            "memory": len(memory.memory),
+            "secrets": len(secrets.secrets),
+            "source_metadata": dict(source_metadata),
+        }
+    )
 
-# ---------------------------------------------------------------------------
-# Spawner dispatch
-# ---------------------------------------------------------------------------
-
-
-def _instantiate_spawner(module: str, class_name: str):  # noqa: ANN202
-    mod = __import__(module, fromlist=[class_name])
-    return getattr(mod, class_name)()
-
-
-def _get_spawner(agent_type: AgentType):  # noqa: ANN202
-    """Return the spawner connector for the given agent type."""
-    _SPAWNERS = {
-        AgentType.OPENCLAW: lambda: _instantiate_spawner(
-            "pynydus.agents.openclaw.spawner", "OpenClawSpawner"
-        ),
-        AgentType.LETTA: lambda: _instantiate_spawner(
-            "pynydus.agents.letta.spawner", "LettaSpawner"
-        ),
-        AgentType.ZEROCLAW: lambda: _instantiate_spawner(
-            "pynydus.agents.zeroclaw.spawner", "ZeroClawSpawner"
-        ),
-    }
-    factory = _SPAWNERS.get(agent_type)
-    if factory is None:
-        raise ConnectorError(f"No spawner available for: {agent_type}")
-    return factory()
-
-
-# ---------------------------------------------------------------------------
-# Registry helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_registry_ref(ref: str) -> bool:
-    """Check if a base egg reference looks like a registry ref (name:version)."""
-    if ref.endswith(".egg"):
-        return False
-    if ref.startswith(("./", "/", "\\")):
-        return False
-    return ":" in ref
-
-
-def _pull_registry_egg(ref: str) -> str:
-    """Pull a registry egg to a temp file and return its path."""
-    import tempfile
-
-    from pynydus.api.errors import ConfigError, RegistryError
-    from pynydus.config import load_config
-    from pynydus.remote.registry import NestClient
-
-    parts = ref.rsplit(":", 1)
-    if len(parts) != 2 or not parts[1]:
-        raise RegistryError(f"Invalid registry reference: {ref}. Expected name:version.")
-
-    name, version = parts
-
-    config = load_config()
-    if config.registry is None:
-        raise ConfigError(
-            f"Cannot resolve registry reference '{ref}': set NYDUS_REGISTRY_URL "
-            "(and optionally NYDUS_REGISTRY_AUTHOR)."
-        )
-
-    client = NestClient(config.registry.url, author=config.registry.author)
-
-    tmp_dir = Path(tempfile.mkdtemp(prefix="nydus_base_"))
-    egg_path = tmp_dir / f"{name.replace('/', '_')}_{version}.egg"
-
-    return str(client.pull(name, version=version, output_path=egg_path))
-
-
-# ---------------------------------------------------------------------------
-# Nydusfile helpers
-# ---------------------------------------------------------------------------
-
-
-def _apply_custom_labels(memory: MemoryModule, custom_labels: dict[str, str]) -> None:
-    """Override memory record labels based on source_store pattern matching."""
-    import fnmatch
-
-    for rec in memory.memory:
-        if not rec.source_store:
-            continue
-        for pattern, label_str in custom_labels.items():
-            if fnmatch.fnmatch(rec.source_store, pattern):
-                rec.label = MemoryLabel(label_str)
-                break
-
-
-# ---------------------------------------------------------------------------
-# FROM + SOURCE record merging
-# ---------------------------------------------------------------------------
-
-
-def _merge_skills(base: SkillsModule, extracted: SkillsModule) -> SkillsModule:
-    """Combine base egg skills with freshly extracted skills, re-numbering IDs."""
-    combined = list(base.skills) + list(extracted.skills)
-    for i, skill in enumerate(combined, start=1):
-        skill.id = f"skill_{i:03d}"
-    mcp = dict(base.mcp_configs)
-    mcp.update(extracted.mcp_configs)
-    return SkillsModule(skills=combined, mcp_configs=mcp)
-
-
-def _merge_memory(base: MemoryModule, extracted: MemoryModule) -> MemoryModule:
-    """Combine base egg memory with freshly extracted memory, re-numbering IDs."""
-    combined = list(base.memory) + list(extracted.memory)
-    for i, rec in enumerate(combined, start=1):
-        rec.id = f"mem_{i:03d}"
-    return MemoryModule(memory=combined)
-
-
-def _merge_secrets(
-    base: SecretsModule,
-    extracted: SecretsModule,
-) -> SecretsModule:
-    """Combine base egg secrets with extracted secrets, deduplicating by name."""
-    seen_names: set[str] = set()
-    combined: list[SecretRecord] = []
-    for s in list(base.secrets) + list(extracted.secrets):
-        if s.name not in seen_names:
-            combined.append(s)
-            seen_names.add(s.name)
-    for i, s in enumerate(combined, start=1):
-        s.id = f"secret_{i:03d}"
-    return SecretsModule(secrets=combined)
+    return egg

@@ -65,7 +65,7 @@ def sample_egg() -> Egg:
                     text="Connect with {{SECRET_002}}",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="soul.md",
+                    source_store="MEMORY.md",
                 )
             ]
         ),
@@ -158,7 +158,7 @@ class TestHatchPipelineLogging:
         secrets_file.write_text("API_KEY=sk-test-123")
 
         mock_render = RenderResult(
-            files={"skill.md": "# search\n\nUse key={{SECRET_001}} to auth\n"},
+            files={"SKILL.md": "# search\n\nUse key={{SECRET_001}} to auth\n"},
         )
 
         with patch("pynydus.engine.hatcher._get_hatcher") as mock_get:
@@ -270,7 +270,7 @@ class TestHatchModes:
                 ]
             ),
         )
-        raw = {"skill.md": "# search\n\nsearch tool\n"}
+        raw = {"SKILL.md": "# search\n\nsearch tool\n"}
 
         result = hatch(
             egg,
@@ -307,7 +307,7 @@ class TestHatchModes:
         )
 
         mock_render = RenderResult(
-            files={"skill.md": "search tool\n"},
+            files={"SKILL.md": "search tool\n"},
         )
 
         with patch("pynydus.engine.hatcher._get_hatcher") as mock_get:
@@ -332,7 +332,7 @@ class TestHatchModes:
                 included_modules=[Bucket.SKILL],
             ),
         )
-        raw = {"soul.md": "content"}
+        raw = {"SOUL.md": "content"}
 
         with pytest.raises(HatchError, match="passthrough"):
             hatch(
@@ -374,7 +374,7 @@ class TestHatchModes:
                 included_modules=[Bucket.SKILL, Bucket.MEMORY],
             ),
         )
-        raw = {"soul.md": "I am a soul.", "knowledge.md": "Facts here."}
+        raw = {"SOUL.md": "I am a soul.", "MEMORY.md": "Facts here."}
 
         result = hatch(
             egg,
@@ -384,10 +384,10 @@ class TestHatchModes:
             raw_artifacts=raw,
         )
 
-        assert "soul.md" in result.files_created
-        assert "knowledge.md" in result.files_created
-        assert (out_dir / "soul.md").read_text() == "I am a soul."
-        assert (out_dir / "knowledge.md").read_text() == "Facts here."
+        assert "SOUL.md" in result.files_created
+        assert "MEMORY.md" in result.files_created
+        assert (out_dir / "SOUL.md").read_text() == "I am a soul."
+        assert (out_dir / "MEMORY.md").read_text() == "Facts here."
 
     def test_rebuild_mode_creates_expected_files(self, tmp_path: Path):
         out_dir = tmp_path / "output"
@@ -416,7 +416,7 @@ class TestHatchModes:
                         text="A preference.",
                         label=MemoryLabel.PERSONA,
                         agent_type="openclaw",
-                        source_store="soul.md",
+                        source_store="SOUL.md",
                     ),
                 ]
             ),
@@ -424,8 +424,8 @@ class TestHatchModes:
 
         result = hatch(egg, target="openclaw", output_dir=out_dir)
 
-        assert "soul.md" in result.files_created
-        assert "skill.md" in result.files_created
+        assert "SOUL.md" in result.files_created
+        assert "skills/test.md" in result.files_created
 
 
 class TestHatchLogWrittenByPipeline:
@@ -491,7 +491,7 @@ class TestHatchLogWrittenByPipeline:
                 ]
             ),
         )
-        raw = {"skill.md": "search tool\n"}
+        raw = {"SKILL.md": "search tool\n"}
 
         hatch(
             egg,

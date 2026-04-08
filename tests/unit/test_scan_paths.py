@@ -23,7 +23,7 @@ class TestClassify:
         assert classify("script.py") == "plain"
         assert classify("code.ts") == "plain"
         assert classify("Makefile") == "plain"
-        assert classify("soul.md") == "markdown"
+        assert classify("SOUL.md") == "markdown"
 
     def test_no_extension(self):
         assert classify("Dockerfile") == "plain"
@@ -37,7 +37,7 @@ class TestClassify:
 class TestPartitionFiles:
     def test_splits_correctly(self):
         files = {
-            "soul.md": "text",
+            "SOUL.md": "text",
             "config.json": "{}",
             "photo.png": "binary",
             "code.py": "x = 1",
@@ -45,7 +45,7 @@ class TestPartitionFiles:
         scannable, ignored = partition_files(files)
         assert "photo.png" in ignored
         assert "photo.png" not in scannable
-        assert "soul.md" in scannable
+        assert "SOUL.md" in scannable
         assert "config.json" in scannable
         assert "code.py" in scannable
 

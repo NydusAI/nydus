@@ -30,7 +30,7 @@ class TestInspectLogs:
         spawn_log = [
             {"type": "redaction", "source": "memory:m1", "pii_type": "EMAIL_ADDRESS"},
             {"type": "redaction", "source": "memory:m1", "pii_type": "PERSON"},
-            {"type": "redaction", "source": "raw:soul.md", "pii_type": "EMAIL_ADDRESS"},
+            {"type": "redaction", "source": "raw:SOUL.md", "pii_type": "EMAIL_ADDRESS"},
         ]
         egg_path = save(sample_egg, tmp_path / "test.egg", spawn_log=spawn_log)
         result = runner.invoke(app, ["inspect", str(egg_path), "--logs"])

@@ -71,7 +71,7 @@ def mcp_egg() -> Egg:
                     text="A preference.",
                     label=MemoryLabel.PERSONA,
                     agent_type="openclaw",
-                    source_store="soul.md",
+                    source_store="SOUL.md",
                 )
             ]
         ),
@@ -83,8 +83,10 @@ def openclaw_project_with_mcp(tmp_path: Path) -> Path:
     """OpenClaw project directory containing MCP configs."""
     root = tmp_path / "openclaw_mcp"
     root.mkdir()
-    (root / "soul.md").write_text("I am helpful.\n")
-    (root / "skill.md").write_text("# greet\n\nSay hello.\n")
+    (root / "SOUL.md").write_text("I am helpful.\n")
+    sk = root / "skills"
+    sk.mkdir()
+    (sk / "greet.md").write_text("Say hello.\n")
     mcp_dir = root / "mcp"
     mcp_dir.mkdir()
     (mcp_dir / "snowflake.json").write_text(
@@ -98,7 +100,7 @@ def openclaw_project_with_mcp_file(tmp_path: Path) -> Path:
     """OpenClaw project with a single mcp.json file."""
     root = tmp_path / "openclaw_mcp_file"
     root.mkdir()
-    (root / "soul.md").write_text("I am helpful.\n")
+    (root / "SOUL.md").write_text("I am helpful.\n")
     mcp_data = {
         "snowflake": {"command": "npx", "args": ["-y", "@anthropic/snowflake-mcp"]},
         "github": {"url": "https://mcp.github.com"},
@@ -221,8 +223,8 @@ class TestOpenClawMcpExtraction:
         from pynydus.agents.openclaw.spawner import OpenClawSpawner
 
         files = {
-            "soul.md": "I am helpful.\n",
-            "skill.md": "# greet\n\nSay hello.\n",
+            "SOUL.md": "I am helpful.\n",
+            "skills/greet.md": "Say hello.\n",
             "mcp/snowflake.json": json.dumps(
                 {"command": "npx", "args": ["-y", "@anthropic/snowflake-mcp"]}
             ),
@@ -239,7 +241,7 @@ class TestOpenClawMcpExtraction:
             "github": {"url": "https://mcp.github.com"},
         }
         files = {
-            "soul.md": "I am helpful.\n",
+            "SOUL.md": "I am helpful.\n",
             "mcp.json": json.dumps(mcp_data),
         }
         result = OpenClawSpawner().parse(files)
@@ -250,7 +252,7 @@ class TestOpenClawMcpExtraction:
     def test_no_mcp_returns_empty(self):
         from pynydus.agents.openclaw.spawner import OpenClawSpawner
 
-        files = {"soul.md": "hi\n"}
+        files = {"SOUL.md": "hi\n"}
         result = OpenClawSpawner().parse(files)
         assert result.mcp_configs == {}
 
@@ -343,8 +345,8 @@ class TestMcpEndToEnd:
         from pynydus.agents.openclaw.spawner import OpenClawSpawner
 
         files = {
-            "soul.md": "I am helpful.\n",
-            "skill.md": "# greet\n\nSay hello.\n",
+            "SOUL.md": "I am helpful.\n",
+            "skills/greet.md": "Say hello.\n",
             "mcp/snowflake.json": json.dumps(
                 {"command": "npx", "args": ["-y", "@anthropic/snowflake-mcp"]}
             ),
@@ -379,7 +381,7 @@ class TestMcpEndToEnd:
                         text="I am helpful.",
                         label=MemoryLabel.PERSONA,
                         agent_type="openclaw",
-                        source_store="soul.md",
+                        source_store="SOUL.md",
                     )
                 ]
             ),

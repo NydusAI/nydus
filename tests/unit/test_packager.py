@@ -20,7 +20,7 @@ from pynydus.engine.packager import (
 
 class TestPackUnpack:
     def test_creates_egg_file(self, sample_egg: Egg, tmp_path: Path):
-        path = save(sample_egg, tmp_path / "test.egg", raw_artifacts={"soul.md": "hello"})
+        path = save(sample_egg, tmp_path / "test.egg", raw_artifacts={"SOUL.md": "hello"})
         assert path.exists()
         assert path.suffix == ".egg"
 
@@ -42,7 +42,7 @@ class TestPackUnpack:
         assert len(loaded.memory.memory) == 1
 
     def test_save_load_roundtrip_raw_and_log(self, sample_egg: Egg, tmp_path: Path):
-        raw = {"soul.md": "I am an agent.", "skill.md": "# Do stuff"}
+        raw = {"SOUL.md": "I am an agent.", "SKILL.md": "# Do stuff"}
         log = [{"type": "test", "ok": True}]
         path = save(
             sample_egg,
@@ -57,11 +57,11 @@ class TestPackUnpack:
         assert loaded.nydusfile == "SOURCE openclaw ./x\n"
 
     def test_raw_artifacts(self, sample_egg: Egg, tmp_path: Path):
-        raw = {"soul.md": "I am an agent.", "skill.md": "# Do stuff"}
+        raw = {"SOUL.md": "I am an agent.", "SKILL.md": "# Do stuff"}
         path = save(sample_egg, tmp_path / "test.egg", raw_artifacts=raw)
         artifacts = read_raw_artifacts(path)
-        assert artifacts["soul.md"] == "I am an agent."
-        assert artifacts["skill.md"] == "# Do stuff"
+        assert artifacts["SOUL.md"] == "I am an agent."
+        assert artifacts["SKILL.md"] == "# Do stuff"
 
     def test_logs_present(self, sample_egg: Egg, tmp_path: Path):
         path = save(sample_egg, tmp_path / "test.egg")
@@ -86,7 +86,7 @@ class TestPackUnpack:
         assert read_nydusfile(path) == nf
 
     def test_load_include_raw_false_skips_raw(self, sample_egg: Egg, tmp_path: Path):
-        raw = {"soul.md": "body"}
+        raw = {"SOUL.md": "body"}
         path = save(sample_egg, tmp_path / "with_raw.egg", raw_artifacts=raw)
         full = load(path)
         assert full.raw_artifacts == raw

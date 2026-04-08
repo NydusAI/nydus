@@ -91,7 +91,7 @@ def make_egg(
                 text="A fact.",
                 label=MemoryLabel.STATE,
                 agent_type="openclaw",
-                source_store="knowledge.md",
+                source_store="MEMORY.md",
             )
         ]
 
@@ -129,29 +129,6 @@ def sample_egg() -> Egg:
 def minimal_egg() -> Egg:
     """An Egg with only a manifest and empty modules."""
     return make_egg(skills=[], memory=[], included_modules=[Bucket.SKILL, Bucket.MEMORY])
-
-
-@pytest.fixture
-def openclaw_project(tmp_path: Path) -> Path:
-    """Create a minimal OpenClaw project directory."""
-    (tmp_path / "soul.md").write_text(
-        "I am a research assistant.\n\nI prefer concise summaries.\n\nContact: alex@example.com\n"
-    )
-    (tmp_path / "knowledge.md").write_text(
-        "# Domain Knowledge\n\n"
-        "The speed of light is 299,792,458 m/s.\n\n"
-        "Python 3.12 was released in October 2023.\n"
-    )
-    (tmp_path / "skill.md").write_text(
-        "# Summarize Documents\n\n"
-        "Produce a 5-bullet summary of any document.\n\n"
-        "# Data Analysis\n\n"
-        "Process CSV data and generate statistical summaries.\n"
-    )
-    (tmp_path / "config.json").write_text(
-        '{"aws_access_key_id": "AKIAYRWSSQ3BPTB4DX7Z", "model": "gpt-4"}\n'
-    )
-    return tmp_path
 
 
 @pytest.fixture

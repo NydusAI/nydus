@@ -101,6 +101,11 @@ def spawn(
             parts.append(f"{counts['extraction']} value extractions")
         if parts:
             rprint(f"  [dim]logs: {', '.join(parts)}[/dim]")
+    if nydus_cfg.llm is None:
+        rprint(
+            "  [dim]LLM refinement disabled "
+            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +167,11 @@ def hatch(
         rprint(f"  {f}")
     for w in result.warnings:
         rprint(f"  [yellow]Warning:[/yellow] {w}")
+    if nydus_cfg.llm is None:
+        rprint(
+            "  [dim]LLM refinement disabled "
+            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
+        )
 
 
 # ---------------------------------------------------------------------------

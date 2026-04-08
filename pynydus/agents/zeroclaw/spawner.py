@@ -41,10 +41,6 @@ from pynydus.api.raw_types import (
     RawMemory,
     RawSkill,
 )
-from pynydus.api.schemas import (
-    ValidationIssue,
-    ValidationReport,
-)
 from pynydus.common.connector_utils import (
     parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
 )
@@ -175,32 +171,6 @@ class ZeroClawSpawner:
             result.source_metadata = supp.source_metadata
 
         return result
-
-    def validate(self, input_path: Path) -> ValidationReport:
-        """Validate a ZeroClaw source before spawning."""
-        issues: list[ValidationIssue] = []
-        if not input_path.is_dir():
-            issues.append(
-                ValidationIssue(
-                    level="error",
-                    message=f"Not a directory: {input_path}",
-                    location=str(input_path),
-                )
-            )
-            return ValidationReport(valid=False, issues=issues)
-
-        has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
-        has_tools = (input_path / "tools").is_dir() or (input_path / "tools.json").exists()
-        has_memory_db = (input_path / "memory.db").exists()
-        if not has_persona and not has_tools and not has_memory_db:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message="No persona.md or tools/ found, Egg will be sparse",
-                    location=str(input_path),
-                )
-            )
-        return ValidationReport(valid=not any(i.level == "error" for i in issues), issues=issues)
 
     # ------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)

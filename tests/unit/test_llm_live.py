@@ -41,14 +41,14 @@ class TestLiveMemory:
                     text="Python was released in 1991.",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 ),
                 MemoryRecord(
                     id="mem_002",
                     text="Python was first released in 1991 by Guido van Rossum.",
                     label=MemoryLabel.STATE,
                     agent_type="openclaw",
-                    source_store="knowledge.md",
+                    source_store="MEMORY.md",
                 ),
             ]
         )
@@ -83,18 +83,18 @@ class TestLiveHatch:
     def test_polish(self):
         tier = _tier()
         egg = make_egg()
-        files = {"soul.md": "I am a helpful AI assistant.\n"}
+        files = {"SOUL.md": "I am a helpful AI assistant.\n"}
         result = refine_hatch(files, egg, tier)
-        assert "soul.md" in result
-        assert len(result["soul.md"]) > 0
-        assert result["soul.md"] != files["soul.md"], (
+        assert "SOUL.md" in result
+        assert len(result["SOUL.md"]) > 0
+        assert result["SOUL.md"] != files["SOUL.md"], (
             "LLM should polish content, not return it unchanged"
         )
 
     def test_placeholders_survive(self):
         tier = _tier()
         egg = make_egg()
-        files = {"soul.md": "Contact me at {{PII_001}} or {{SECRET_001}}.\n"}
+        files = {"SOUL.md": "Contact me at {{PII_001}} or {{SECRET_001}}.\n"}
         result = refine_hatch(files, egg, tier)
-        assert "{{PII_001}}" in result["soul.md"]
-        assert "{{SECRET_001}}" in result["soul.md"]
+        assert "{{PII_001}}" in result["SOUL.md"]
+        assert "{{SECRET_001}}" in result["SOUL.md"]

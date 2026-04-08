@@ -1,0 +1,5 @@
+FROM ../base/base.egg
+ADD skill ./extras/order-lookup.md
+ADD memory.label=context "./extras/returns-policy.md"
+ADD memory "Zara now supports real-time order tracking. Launched Q2 2026."
+ADD secret ORDER_DB_PASSWORD

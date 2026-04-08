@@ -15,6 +15,21 @@ nydus login myuser
 Credentials (JWT tokens) are stored at `~/.nydus/credentials.json`.
 Log out: `nydus logout`.
 
+### Nest server auth modes
+
+Configure the Nest **server** with a `.env` file or environment variables (`NEST_*`); see the Nest service README and `nest/backend/.env.example` in the Nest repository.
+
+The Nest registry **auth** is configured as one of two modes (see the Nest service README):
+
+- **`custom` (default for development):** Nest exposes `POST /auth/register` and
+  `POST /auth/login` and issues its own JWTs. This matches the PyNydus CLI and
+  SDK flows above. Egg names must use your username as the first path segment
+  (e.g. `myuser/my-agent`).
+- **`supabase`:** Nest verifies Supabase access JWTs only; there are no Nest
+  `/auth/*` routes. Obtain a token from Supabase (your app or tooling), then use
+  the same `Authorization: Bearer …` header on egg APIs. The JWT claim used as
+  the egg name prefix defaults to `sub` (configurable on the server).
+
 ## Push
 
 

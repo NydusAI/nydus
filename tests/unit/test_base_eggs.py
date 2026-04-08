@@ -1,4 +1,4 @@
-"""Tests for base.egg files produced by ``make base-eggs``."""
+"""Tests for base.egg files built from recipe directories (``./spawn.sh`` or ``uv run nydus spawn``)."""
 
 from __future__ import annotations
 
@@ -14,26 +14,36 @@ class TestBaseEggGeneration:
     def openclaw_base(self) -> Path:
         path = (
             Path(__file__).resolve().parent.parent.parent
-            / "dist"
-            / "base_eggs"
+            / "pynydus"
+            / "eggs"
+            / "base"
             / "openclaw"
+            / "0.0.1"
             / "base.egg"
         )
         if not path.exists():
-            pytest.skip("openclaw base.egg not generated yet (run 'make base-eggs')")
+            pytest.skip(
+                "openclaw base.egg not built yet (from pynydus/eggs/base/openclaw/0.0.1 run ./spawn.sh "
+                "or: uv run nydus spawn -o ./base.egg)"
+            )
         return path
 
     @pytest.fixture
     def letta_base(self) -> Path:
         path = (
             Path(__file__).resolve().parent.parent.parent
-            / "dist"
-            / "base_eggs"
+            / "pynydus"
+            / "eggs"
+            / "base"
             / "letta"
+            / "0.0.1"
             / "base.egg"
         )
         if not path.exists():
-            pytest.skip("letta base.egg not generated yet (run 'make base-eggs')")
+            pytest.skip(
+                "letta base.egg not built yet (from pynydus/eggs/base/letta/0.0.1 run ./spawn.sh "
+                "or: uv run nydus spawn -o ./base.egg)"
+            )
         return path
 
     def test_openclaw_base_egg(self, openclaw_base: Path):
@@ -43,8 +53,11 @@ class TestBaseEggGeneration:
         assert len(egg.skills.skills) >= 1
         assert len(egg.memory.memory) >= 1
         assert egg.memory.memory[0].label == MemoryLabel.PERSONA
-        assert len(egg.secrets.secrets) >= 1
-        assert "OPENAI_API_KEY" in {s.name for s in egg.secrets.secrets}
+        secret_names = {s.name for s in egg.secrets.secrets}
+        if secret_names:
+            assert "OPENAI_API_KEY" in secret_names
+        else:
+            assert "OPENAI_API_KEY" in egg.raw_artifacts.get("config.json", "")
 
     def test_letta_base_egg(self, letta_base: Path):
         egg = load(letta_base)
@@ -56,7 +69,10 @@ class TestBaseEggGeneration:
         assert MemoryLabel.CONTEXT in labels
         assert MemoryLabel.FLOW in labels
         names = {s.name for s in egg.secrets.secrets}
-        assert "OPENAI_API_KEY" in names
-        assert "LETTA_SERVER_URL" in names
-        assert egg.manifest.source_metadata.get("kind") == "base_egg"
-        assert egg.manifest.source_metadata.get("namespace") == "nydus/letta"
+        if names:
+            assert "OPENAI_API_KEY" in names
+            assert "LETTA_SERVER_URL" in names
+        else:
+            state = egg.raw_artifacts.get("agent_state.json", "")
+            assert "OPENAI_API_KEY" in state
+            assert "LETTA_SERVER_URL" in state

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,119 @@ def _rich_egg():
                 label=MemoryLabel.STATE,
                 agent_type="zeroclaw",
                 source_store="MEMORY.md",
+            ),
+        ],
+    )
+
+
+def _rich_egg_with_splits():
+    """Egg with IDENTITY, TOOLS, dated memory — tests file-splitting logic."""
+    return make_egg(
+        skills=[
+            SkillRecord(
+                id="s1", name="search web", agent_type="zeroclaw", content="def search(): pass"
+            ),
+            SkillRecord(
+                id="s2", name="file read", agent_type="zeroclaw", content="def file_read(): pass"
+            ),
+        ],
+        memory=[
+            MemoryRecord(
+                id="m1",
+                text="I am a personal assistant.",
+                label=MemoryLabel.PERSONA,
+                agent_type="zeroclaw",
+                source_store="SOUL.md",
+            ),
+            MemoryRecord(
+                id="m2",
+                text="ZeroClaw Agent v2",
+                label=MemoryLabel.PERSONA,
+                agent_type="zeroclaw",
+                source_store="IDENTITY.md",
+            ),
+            MemoryRecord(
+                id="m3",
+                text="Follow structured output.",
+                label=MemoryLabel.FLOW,
+                agent_type="zeroclaw",
+                source_store="AGENTS.md",
+            ),
+            MemoryRecord(
+                id="m4",
+                text="User likes Rust.",
+                label=MemoryLabel.CONTEXT,
+                agent_type="zeroclaw",
+                source_store="USER.md",
+            ),
+            MemoryRecord(
+                id="m5",
+                text="Rate limit 100 req/min for search API.",
+                label=MemoryLabel.CONTEXT,
+                agent_type="zeroclaw",
+                source_store="TOOLS.md",
+            ),
+            MemoryRecord(
+                id="m6",
+                text="Async patterns are preferred.",
+                label=MemoryLabel.STATE,
+                agent_type="zeroclaw",
+                source_store="MEMORY.md",
+            ),
+            MemoryRecord(
+                id="m7",
+                text="Discussed Tokio runtime.",
+                label=MemoryLabel.STATE,
+                agent_type="zeroclaw",
+                source_store="memory/2026-03-15.md",
+                timestamp=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            ),
+            MemoryRecord(
+                id="m8",
+                text="Configured async executor.",
+                label=MemoryLabel.STATE,
+                agent_type="zeroclaw",
+                source_store="memory/2026-03-17.md",
+                timestamp=datetime(2026, 3, 17, tzinfo=timezone.utc),
+            ),
+        ],
+    )
+
+
+def _cross_platform_egg():
+    """Egg from a non-ZeroClaw source (e.g. Letta) — no ZeroClaw source_store hints."""
+    return make_egg(
+        skills=[
+            SkillRecord(id="s1", name="analyze", agent_type="letta", content="def analyze(): pass")
+        ],
+        memory=[
+            MemoryRecord(
+                id="m1",
+                text="I am a data analyst.",
+                label=MemoryLabel.PERSONA,
+                agent_type="letta",
+                source_store="db.blocks.persona",
+            ),
+            MemoryRecord(
+                id="m2",
+                text="Be concise.",
+                label=MemoryLabel.FLOW,
+                agent_type="letta",
+                source_store="agent_state.json#system",
+            ),
+            MemoryRecord(
+                id="m3",
+                text="User prefers Python.",
+                label=MemoryLabel.CONTEXT,
+                agent_type="letta",
+                source_store="db.blocks.human",
+            ),
+            MemoryRecord(
+                id="m4",
+                text="Historical fact.",
+                label=MemoryLabel.STATE,
+                agent_type="letta",
+                source_store="db.archival_memory",
             ),
         ],
     )
@@ -217,12 +331,53 @@ class TestZeroClawRender:
         for f in ("persona.md", "knowledge.md", "agents.md", "user.md"):
             assert f in result.files
 
+    def test_zeroclaw_marker(self, hatcher):
+        egg = _rich_egg()
+        result = hatcher.render(egg)
+        assert ".zeroclaw/.keep" in result.files
+
     def test_tools(self, hatcher):
         egg = _rich_egg()
         result = hatcher.render(egg)
         assert any(f.startswith("tools/") for f in result.files)
 
-    def test_credentials(self, hatcher):
+    def test_identity_split(self, hatcher):
+        egg = _rich_egg_with_splits()
+        result = hatcher.render(egg)
+        assert "persona.md" in result.files
+        assert "identity.md" in result.files
+        assert "ZeroClaw Agent v2" in result.files["identity.md"]
+        assert "I am a personal assistant." in result.files["persona.md"]
+
+    def test_tools_split(self, hatcher):
+        egg = _rich_egg_with_splits()
+        result = hatcher.render(egg)
+        assert "user.md" in result.files
+        assert "tools.md" in result.files
+        assert "Rate limit" in result.files["tools.md"]
+        assert "User likes Rust." in result.files["user.md"]
+
+    def test_dated_memory(self, hatcher):
+        egg = _rich_egg_with_splits()
+        result = hatcher.render(egg)
+        assert "knowledge.md" in result.files
+        assert "memory/2026-03-15.md" in result.files
+        assert "memory/2026-03-17.md" in result.files
+        assert "Tokio runtime" in result.files["memory/2026-03-15.md"]
+        assert "Async patterns" in result.files["knowledge.md"]
+
+    def test_cross_platform_fallback(self, hatcher):
+        egg = _cross_platform_egg()
+        result = hatcher.render(egg)
+        assert "persona.md" in result.files
+        assert "agents.md" in result.files
+        assert "user.md" in result.files
+        assert "knowledge.md" in result.files
+        assert "tools/analyze.py" in result.files
+        assert "identity.md" not in result.files
+        assert "tools.md" not in result.files
+
+    def test_credentials_toml(self, hatcher):
         from pynydus.api.schemas import SecretRecord, SecretsModule
         from pynydus.common.enums import Bucket, InjectionMode, SecretKind
 
@@ -241,9 +396,40 @@ class TestZeroClawRender:
         )
         egg.manifest.included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
         result = hatcher.render(egg)
-        assert "{{SECRET_001}}" in result.files["config.json"]
+        assert "config.toml" in result.files
+        assert "config.json" not in result.files
+        assert "{{SECRET_001}}" in result.files["config.toml"]
+        assert "API_KEY" in result.files["config.toml"]
 
-    def test_empty_raises(self, hatcher):
+    def test_source_metadata_roundtrip(self, hatcher):
+        egg = _rich_egg()
+        egg.manifest.source_metadata = {
+            "zeroclaw.agent.name": "zc-agent",
+            "zeroclaw.agent.model": "claude-3",
+        }
+        result = hatcher.render(egg)
+        assert "config.toml" in result.files
+        toml = result.files["config.toml"]
+        assert 'name = "zc-agent"' in toml
+        assert 'model = "claude-3"' in toml
+
+    def test_multiple_skills_separate_files(self, hatcher):
+        egg = _rich_egg_with_splits()
+        result = hatcher.render(egg)
+        assert "tools/search_web.py" in result.files
+        assert "tools/file_read.py" in result.files
+
+    def test_empty_produces_marker_only(self, hatcher):
         egg = make_egg(skills=[], memory=[])
-        with pytest.raises(HatchError):
-            hatcher.render(egg)
+        result = hatcher.render(egg)
+        assert ".zeroclaw/.keep" in result.files
+        md_files = [f for f in result.files if f.endswith(".md")]
+        assert len(md_files) == 0
+
+    def test_no_uppercase_filenames(self, hatcher):
+        egg = _rich_egg()
+        result = hatcher.render(egg)
+        md_files = [f for f in result.files if f.endswith(".md")]
+        for f in md_files:
+            basename = f.split("/")[-1]
+            assert basename == basename.lower(), f"Expected lowercase filename, got {f}"

@@ -63,7 +63,7 @@ def _memory(id: str, text: str = "fact", label: MemoryLabel = MemoryLabel.STATE)
         text=text,
         label=label,
         agent_type="openclaw",
-        source_store="knowledge.md",
+        source_store="MEMORY.md",
     )
 
 

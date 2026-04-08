@@ -19,12 +19,7 @@ import json
 
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
-from pynydus.api.schemas import (
-    Egg,
-    HatchResult,
-    ValidationIssue,
-    ValidationReport,
-)
+from pynydus.api.schemas import Egg
 from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
 from pynydus.common.enums import MemoryLabel, SecretKind
 
@@ -45,7 +40,6 @@ class LettaHatcher:
         and ``{{PII_NNN}}`` placeholders intact.
         """
         files: dict[str, str] = {}
-        warnings: list[str] = []
 
         # --- agent_state.json ---
         agent_state = self._build_agent_state(egg)
@@ -81,65 +75,7 @@ class LettaHatcher:
         if not files:
             raise HatchError("Egg produced no output files for Letta target")
 
-        return RenderResult(files=files, warnings=warnings)
-
-    def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated Letta output."""
-        issues: list[ValidationIssue] = []
-
-        if "agent_state.json" not in result.files_created:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message="agent_state.json was not generated",
-                    location=str(result.output_dir),
-                )
-            )
-
-        for fname in result.files_created:
-            fpath = result.output_dir / fname
-            if not fpath.exists():
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message=f"Expected file not found: {fname}",
-                        location=str(fpath),
-                    )
-                )
-
-        state_path = result.output_dir / "agent_state.json"
-        if state_path.exists():
-            try:
-                data = json.loads(state_path.read_text())
-                if not isinstance(data, dict):
-                    issues.append(
-                        ValidationIssue(
-                            level="error",
-                            message="agent_state.json is not a JSON object",
-                            location=str(state_path),
-                        )
-                    )
-                elif "memory" not in data and "system" not in data:
-                    issues.append(
-                        ValidationIssue(
-                            level="warning",
-                            message="agent_state.json has no memory blocks or system prompt",
-                            location=str(state_path),
-                        )
-                    )
-            except json.JSONDecodeError:
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message="agent_state.json is not valid JSON",
-                        location=str(state_path),
-                    )
-                )
-
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues),
-            issues=issues,
-        )
+        return RenderResult(files=files, warnings=[])
 
     # ------------------------------------------------------------------
     # Helpers

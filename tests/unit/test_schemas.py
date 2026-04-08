@@ -37,7 +37,7 @@ class TestMemoryRecord:
             text="{{PII_001}} prefers concise summaries.",
             label=MemoryLabel.PERSONA,
             agent_type="openclaw",
-            source_store="soul.md",
+            source_store="SOUL.md",
         )
         assert m.label == MemoryLabel.PERSONA
         assert m.shareable is True

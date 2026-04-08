@@ -102,13 +102,21 @@ See `docs/advanced/adding-connectors.md` for the full connector architecture gui
 
 ## Building base eggs
 
-Base egg source definitions live in `pynydus/eggs/base/<agent>/<version>/`. Each directory contains a `Nydusfile` and the agent source files. Build them with:
+Base egg source definitions live in `pynydus/eggs/base/<agent>/<version>/`. Each directory contains a `Nydusfile` and the agent source files.
+
+From that directory, build `./base.egg` (gitignored) using either:
 
 ```bash
-make base-eggs
+./spawn.sh
 ```
 
-Output goes to `dist/base_eggs/<agent>/base.egg`.
+or:
+
+```bash
+uv run nydus spawn -o ./base.egg
+```
+
+To publish to a Nest registry (after `NYDUS_REGISTRY_URL` is set), run `nydus push` on the built file; each `spawn.sh` includes an example `nydus push` line with suggested `--name` and `--version`.
 
 ## Building docs
 

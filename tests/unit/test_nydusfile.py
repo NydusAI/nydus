@@ -269,12 +269,12 @@ class TestRemoveFileParsing:
 
 class TestLabelParsing:
     def test_single_label(self):
-        cfg = parse("SOURCE openclaw ./src\nLABEL soul.md flow")
-        assert cfg.custom_labels == {"soul.md": "flow"}
+        cfg = parse("SOURCE openclaw ./src\nLABEL SOUL.md flow")
+        assert cfg.custom_labels == {"SOUL.md": "flow"}
 
     def test_multiple_labels(self):
-        cfg = parse("SOURCE openclaw ./src\nLABEL soul.md flow\nLABEL knowledge.md state")
-        assert cfg.custom_labels == {"soul.md": "flow", "knowledge.md": "state"}
+        cfg = parse("SOURCE openclaw ./src\nLABEL SOUL.md flow\nLABEL MEMORY.md state")
+        assert cfg.custom_labels == {"SOUL.md": "flow", "MEMORY.md": "state"}
 
     def test_no_arg_raises(self):
         with pytest.raises(NydusfileError, match="requires"):
@@ -282,7 +282,7 @@ class TestLabelParsing:
 
     def test_single_arg_raises(self):
         with pytest.raises(NydusfileError, match="two arguments"):
-            parse("SOURCE openclaw ./src\nLABEL soul.md")
+            parse("SOURCE openclaw ./src\nLABEL SOUL.md")
 
     def test_default_empty(self):
         cfg = parse("SOURCE openclaw ./src")
@@ -290,11 +290,11 @@ class TestLabelParsing:
 
     def test_invalid_label_raises(self):
         with pytest.raises(NydusfileError, match="Unknown label"):
-            parse("SOURCE openclaw ./src\nLABEL soul.md nonexistent_label")
+            parse("SOURCE openclaw ./src\nLABEL SOUL.md nonexistent_label")
 
     def test_duplicate_pattern_raises(self):
         with pytest.raises(NydusfileError, match="Duplicate LABEL"):
-            parse("SOURCE openclaw ./src\nLABEL soul.md flow\nLABEL soul.md persona")
+            parse("SOURCE openclaw ./src\nLABEL SOUL.md flow\nLABEL SOUL.md persona")
 
 
 class TestFullNydusfileWithEnhancements:
@@ -306,12 +306,12 @@ SOURCE openclaw ./src
 REDACT true
 EXCLUDE context
 EXCLUDE flow
-LABEL soul.md flow
-LABEL knowledge.md state
+LABEL SOUL.md flow
+LABEL MEMORY.md state
 """
         cfg = parse(text)
         assert cfg.excluded_memory_labels == [MemoryLabel.CONTEXT, MemoryLabel.FLOW]
-        assert cfg.custom_labels == {"soul.md": "flow", "knowledge.md": "state"}
+        assert cfg.custom_labels == {"SOUL.md": "flow", "MEMORY.md": "state"}
 
 
 # ---------------------------------------------------------------------------
@@ -327,8 +327,8 @@ class TestResolveNydusfile:
         assert result == nf
 
     def test_generates_default_for_openclaw(self, tmp_path: Path):
-        # skill.md matches OpenClaw only; soul.md would also match ZeroClaw (shared persona files).
-        (tmp_path / "skill.md").write_text("hello")
+        # SKILL.md matches OpenClaw only; SOUL.md would also match ZeroClaw (shared persona files).
+        (tmp_path / "SKILL.md").write_text("hello")
         result = resolve_nydusfile(tmp_path)
         assert result.exists()
         cfg = parse(result.read_text())
