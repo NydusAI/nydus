@@ -106,6 +106,7 @@ class ZeroClawHatcher:
         and ``{{PII_NNN}}`` placeholders intact.
         """
         files: dict[str, str] = {}
+        warnings: list[str] = []
 
         # --- PERSONA -> persona.md + identity.md ---
         persona_records: list[MemoryRecord] = []

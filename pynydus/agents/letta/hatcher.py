@@ -40,6 +40,7 @@ class LettaHatcher:
         and ``{{PII_NNN}}`` placeholders intact.
         """
         files: dict[str, str] = {}
+        warnings: list[str] = []
 
         # --- agent_state.json ---
         agent_state = self._build_agent_state(egg)

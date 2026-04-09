@@ -75,6 +75,7 @@ class OpenClawHatcher:
         secret substitution and disk I/O.
         """
         files: dict[str, str] = {}
+        warnings: list[str] = []
 
         # --- PERSONA -> SOUL.md + IDENTITY.md ---
         soul_records: list[MemoryRecord] = []
