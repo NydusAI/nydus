@@ -214,7 +214,7 @@ def env(
         lines.append(f"{s.name}=")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(lines) + "\n")
+    output.write_text("\n".join(lines) + "\n", encoding='utf-8')
     rprint(f"[green]Wrote {output}[/green] ({len(secrets)} secret(s))")
 
 

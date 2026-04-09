@@ -104,7 +104,7 @@ class LettaHatcher:
         for fname, content in result.files.items():
             fpath = output_dir / fname
             fpath.parent.mkdir(parents=True, exist_ok=True)
-            fpath.write_text(content)
+            fpath.write_text(content, encoding='utf-8')
             files_created.append(fname)
 
         return HatchResult(

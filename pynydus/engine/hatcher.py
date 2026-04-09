@@ -180,7 +180,7 @@ def _write_files(files: dict[str, str], output_dir: Path) -> list[str]:
     for fname, content in files.items():
         fpath = output_dir / fname
         fpath.parent.mkdir(parents=True, exist_ok=True)
-        fpath.write_text(content)
+        fpath.write_text(content, encoding='utf-8')
         created.append(fname)
     return created
 
@@ -197,7 +197,7 @@ def _write_hatch_log(result: HatchResult) -> None:
     logs_dir = result.output_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     (logs_dir / "hatch_log.json").write_text(
-        json.dumps(result.hatch_log, indent=2)
+        json.dumps(result.hatch_log, indent=2), encoding='utf-8'
     )
 
 
