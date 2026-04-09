@@ -5,9 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from pynydus.api.schemas import (
-    EggPartial,
     MemoryModule,
     MemoryRecord,
     SkillRecord,
@@ -176,7 +174,9 @@ class TestMemoryMergeLogging:
         refine_memory(MemoryModule(memory=memory_records), llm_config, spawn_log=spawn_log)
 
         refinement_entries = [
-            e for e in spawn_log if e["type"] in ("memory_merge", "memory_refined", "memory_refinement_done")
+            e
+            for e in spawn_log
+            if e["type"] in ("memory_merge", "memory_refined", "memory_refinement_done")
         ]
         assert len(refinement_entries) == 0
 

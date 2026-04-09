@@ -1,4 +1,7 @@
-"""Tests for base.egg files built from recipe directories (``./spawn.sh`` or ``uv run nydus spawn``)."""
+"""Tests for base.egg files built from recipe directories.
+
+Uses ``./spawn.sh`` or ``uv run nydus spawn`` to build base eggs.
+"""
 
 from __future__ import annotations
 
@@ -23,8 +26,9 @@ class TestBaseEggGeneration:
         )
         if not path.exists():
             pytest.skip(
-                "openclaw base.egg not built yet (from pynydus/eggs/base/openclaw/0.0.1 run ./spawn.sh "
-                "or: uv run nydus spawn -o ./base.egg)"
+                "openclaw base.egg not built yet "
+                "(from pynydus/eggs/base/openclaw/0.0.1 "
+                "run ./spawn.sh or: uv run nydus spawn -o ./base.egg)"
             )
         return path
 

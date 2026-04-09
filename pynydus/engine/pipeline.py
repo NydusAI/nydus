@@ -653,10 +653,7 @@ def _parse_sources(
             {
                 "type": "spawner_parse",
                 "agent_type": src_type.value,
-                "skills": [
-                    {"name": s.name, "source_file": s.source_file}
-                    for s in result.skills
-                ],
+                "skills": [{"name": s.name, "source_file": s.source_file} for s in result.skills],
                 "memory": [
                     {
                         "source_file": m.source_file,
@@ -810,7 +807,7 @@ def _drop_memory_records_with_excluded_labels(
         spawn_log.append(
             {
                 "type": "memory_excluded",
-                "excluded_labels": [l.value for l in excluded],
+                "excluded_labels": [lbl.value for lbl in excluded],
                 "dropped": [
                     {"id": r.id, "label": r.label.value, "source_store": r.source_store}
                     for r in dropped

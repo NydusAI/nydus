@@ -94,6 +94,13 @@ class TestRebuildVsPassthrough:
             if f.endswith(".md") and (passthrough_out / f).exists()
         )
 
-        for keyword in ("Voyager", "Protocol", "Flight search", "gold plus", "nonstop", "confirmation"):
+        for keyword in (
+            "Voyager",
+            "Protocol",
+            "Flight search",
+            "gold plus",
+            "nonstop",
+            "confirmation",
+        ):
             assert keyword in rebuild_all, f"'{keyword}' missing from rebuild output"
             assert keyword in passthrough_all, f"'{keyword}' missing from passthrough output"

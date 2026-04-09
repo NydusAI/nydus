@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 from pynydus.agents.zeroclaw.hatcher import ZeroClawHatcher
 from pynydus.agents.zeroclaw.spawner import ZeroClawSpawner
-from pynydus.api.errors import HatchError
 from pynydus.api.schemas import MemoryRecord, SkillRecord
 from pynydus.common.enums import MemoryLabel
 

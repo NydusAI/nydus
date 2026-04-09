@@ -92,6 +92,13 @@ class TestRebuildLayout:
             assert basename == basename.lower(), f"Expected lowercase filename, got {f}"
 
     def test_no_legacy_files(self):
-        for bad in ("SOUL.md", "IDENTITY.md", "AGENTS.md", "USER.md", "TOOLS.md", "MEMORY.md",
-                     "config.json"):
+        for bad in (
+            "SOUL.md",
+            "IDENTITY.md",
+            "AGENTS.md",
+            "USER.md",
+            "TOOLS.md",
+            "MEMORY.md",
+            "config.json",
+        ):
             assert bad not in self.result.files_created, f"Legacy file {bad} should not exist"

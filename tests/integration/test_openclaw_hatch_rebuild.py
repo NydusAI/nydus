@@ -95,7 +95,9 @@ class TestConfigJsonRoundTrip:
         (src / "config.json").write_text(
             json.dumps(
                 {
-                    "OPENAI_API_KEY": "sk-proj-K8mX2pL9qR4wN7vJ3hF6dC1bY0tG5sE8aZ2xP4nM6kQ9rW1jD3fH7yB",
+                    "OPENAI_API_KEY": (
+                        "sk-proj-K8mX2pL9qR4wN7vJ3hF6dC1bY0tG5sE8aZ2xP4nM6kQ9rW1jD3fH7yB"
+                    ),
                     "model": "gpt-4o",
                 },
                 indent=2,

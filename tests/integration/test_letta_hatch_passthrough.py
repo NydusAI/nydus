@@ -17,9 +17,6 @@ from pynydus.common.enums import AgentType, HatchMode
 from pynydus.engine.hatcher import hatch
 
 from _letta_hatch_fixtures import (
-    CUSTOM_TOOL_CODE,
-    HUMAN_TEXT,
-    PERSONA_TEXT,
     SYSTEM_PROMPT,
     spawn_rich_letta,
 )
@@ -85,6 +82,5 @@ class TestRebuildVsPassthrough:
             assert keyword in passthrough_agent["system"], f"'{keyword}' missing from passthrough"
 
         rebuild_block_labels = {b["label"] for b in rebuild_af["blocks"]}
-        passthrough_block_labels = {b["label"] for b in passthrough_af.get("blocks", [])}
         for label in ("persona", "human"):
             assert label in rebuild_block_labels, f"Block '{label}' missing from rebuild"

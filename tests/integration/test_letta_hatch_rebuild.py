@@ -16,10 +16,6 @@ from pynydus.common.enums import AgentType
 from pynydus.engine.hatcher import hatch
 
 from _letta_hatch_fixtures import (
-    CUSTOM_TOOL_CODE,
-    HUMAN_TEXT,
-    PERSONA_TEXT,
-    SYSTEM_PROMPT,
     spawn_rich_letta,
 )
 

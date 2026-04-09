@@ -102,8 +102,14 @@ class TestRebuildVsPassthrough:
         )
 
         for keyword in (
-            "ZeroClaw Agent v2", "Protocol", "rate limit", "Tokio",
-            "epoll", "Benchmarked", "search_web", "file_read",
+            "ZeroClaw Agent v2",
+            "Protocol",
+            "rate limit",
+            "Tokio",
+            "epoll",
+            "Benchmarked",
+            "search_web",
+            "file_read",
         ):
             assert keyword in rebuild_all, f"'{keyword}' missing from rebuild output"
             assert keyword in passthrough_all, f"'{keyword}' missing from passthrough output"

@@ -17,7 +17,9 @@ KNOWLEDGE = "Tokio 1.37 is the latest stable async runtime.\n"
 DAILY_0315 = "Discussed Tokio runtime internals. User wants epoll deep-dive.\n"
 DAILY_0317 = "Configured custom async executor. Benchmarked vs tokio.\n"
 TOOL_SEARCH = 'def search_web(query: str) -> str:\n    """Search the web."""\n    return query\n'
-TOOL_FILE = 'def file_read(path: str) -> str:\n    """Read a file."""\n    return open(path).read()\n'
+TOOL_FILE = (
+    'def file_read(path: str) -> str:\n    """Read a file."""\n    return open(path).read()\n'
+)
 CONFIG_TOML = '[agent]\nmodel = "claude-3"\nname = "zc-agent"\nversion = "0.2.0"\n'
 
 

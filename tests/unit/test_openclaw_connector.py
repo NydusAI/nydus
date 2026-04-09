@@ -79,7 +79,9 @@ def _rich_egg_with_splits():
     return make_egg(
         skills=[
             SkillRecord(id="s1", name="greet", agent_type="openclaw", content="Say hello."),
-            SkillRecord(id="s2", name="search hotels", agent_type="openclaw", content="Find hotels."),
+            SkillRecord(
+                id="s2", name="search hotels", agent_type="openclaw", content="Find hotels."
+            ),
         ],
         memory=[
             MemoryRecord(

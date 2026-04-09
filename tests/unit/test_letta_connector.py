@@ -67,9 +67,7 @@ def _make_af_fixture() -> dict:
                 "description": "A bot that helps with ML research.",
                 "block_ids": ["blk-0", "blk-1"],
                 "tool_ids": ["tool-0", "tool-1", "tool-2"],
-                "tool_rules": [
-                    {"type": "TerminalToolRule", "tool_name": "send_message"}
-                ],
+                "tool_rules": [{"type": "TerminalToolRule", "tool_name": "send_message"}],
                 "tags": ["research", "ml"],
                 "messages": [
                     {
@@ -142,10 +140,18 @@ def _make_af_fixture() -> dict:
         "files": [],
         "sources": [],
         "mcp_servers": [
-            {"server_name": "filesystem", "command": "npx", "args": ["@modelcontextprotocol/server-filesystem"]}
+            {
+                "server_name": "filesystem",
+                "command": "npx",
+                "args": ["@modelcontextprotocol/server-filesystem"],
+            }
         ],
         "skills": [
-            {"name": "web_search", "files": {"SKILL.md": "# Web Search\nSearches the web."}, "source_url": ""}
+            {
+                "name": "web_search",
+                "files": {"SKILL.md": "# Web Search\nSearches the web."},
+                "source_url": "",
+            }
         ],
         "metadata": {"version": "1.0"},
     }

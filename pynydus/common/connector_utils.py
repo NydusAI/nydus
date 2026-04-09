@@ -93,7 +93,6 @@ def skill_to_filename(name: str) -> str:
     return f"{module}.py"
 
 
-
 def parse_timestamp(val: object) -> datetime | None:
     """Parse a timestamp from common string or numeric forms.
 

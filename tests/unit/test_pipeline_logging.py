@@ -4,17 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from pynydus.api.schemas import (
     MemoryModule,
     MemoryRecord,
-    SecretRecord,
     SecretsModule,
     SkillRecord,
     SkillsModule,
 )
-from pynydus.common.enums import AgentType, InjectionMode, MemoryLabel, SecretKind
+from pynydus.common.enums import AgentType, MemoryLabel
 from pynydus.engine.nydusfile import SourceDirective
 from pynydus.engine.pipeline import (
     PipelineContext,
@@ -24,8 +21,8 @@ from pynydus.engine.pipeline import (
     _drop_memory_records_with_excluded_labels,
     _filter_files_by_patterns,
     _merge_memory,
-    _merge_skills,
     _merge_secrets,
+    _merge_skills,
     _package_egg,
 )
 

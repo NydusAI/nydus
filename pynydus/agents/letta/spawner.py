@@ -272,9 +272,7 @@ class LettaSpawner:
         )
 
     @staticmethod
-    def _parse_af_blocks(
-        data: dict, memories: list[RawMemory], af_name: str | None
-    ) -> None:
+    def _parse_af_blocks(data: dict, memories: list[RawMemory], af_name: str | None) -> None:
         """Parse top-level ``blocks`` list from AgentFileSchema."""
         blocks = data.get("blocks", [])
         if not isinstance(blocks, list):
@@ -311,9 +309,7 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_tools(
-        data: dict, skills: list[RawSkill], af_name: str | None
-    ) -> None:
+    def _parse_af_tools(data: dict, skills: list[RawSkill], af_name: str | None) -> None:
         """Parse top-level ``tools`` list.
 
         Only custom tools (with ``source_code``) become skill records.
@@ -339,9 +335,7 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_skills(
-        data: dict, skills: list[RawSkill], af_name: str | None
-    ) -> None:
+    def _parse_af_skills(data: dict, skills: list[RawSkill], af_name: str | None) -> None:
         """Parse top-level ``skills`` list (SkillSchema objects).
 
         Each skill has ``name``, optional ``files`` dict (must include
@@ -373,9 +367,7 @@ class LettaSpawner:
                 seen.add(name)
 
     @staticmethod
-    def _parse_af_tool_rules(
-        agent: dict, memories: list[RawMemory], af_name: str | None
-    ) -> None:
+    def _parse_af_tool_rules(agent: dict, memories: list[RawMemory], af_name: str | None) -> None:
         """Parse ``tool_rules`` from the agent dict as FLOW memory."""
         rules = agent.get("tool_rules", [])
         if not isinstance(rules, list) or not rules:
@@ -396,9 +388,7 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_messages(
-        agent: dict, memories: list[RawMemory], af_name: str | None
-    ) -> None:
+    def _parse_af_messages(agent: dict, memories: list[RawMemory], af_name: str | None) -> None:
         """Parse ``messages`` from agent dict as STATE memory.
 
         Message ``content`` is a list of ``{type, text}`` objects in
@@ -428,9 +418,7 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_env_vars(
-        agent: dict, memories: list[RawMemory], af_name: str | None
-    ) -> None:
+    def _parse_af_env_vars(agent: dict, memories: list[RawMemory], af_name: str | None) -> None:
         """Parse ``tool_exec_environment_variables`` from agent dict.
 
         After redaction these become SECRET placeholders. We store them as

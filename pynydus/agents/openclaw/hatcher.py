@@ -20,12 +20,16 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from pathlib import Path
 
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import (
     Egg,
+    HatchResult,
     MemoryRecord,
+    ValidationIssue,
+    ValidationReport,
 )
 from pynydus.common.enums import MemoryLabel, SecretKind
 
@@ -167,7 +171,7 @@ class OpenClawHatcher:
         for fname, content in result.files.items():
             fpath = output_dir / fname
             fpath.parent.mkdir(parents=True, exist_ok=True)
-            fpath.write_text(content, encoding='utf-8')
+            fpath.write_text(content, encoding="utf-8")
             files_created.append(fname)
 
         return HatchResult(

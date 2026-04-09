@@ -16,10 +16,11 @@ All 4 MemoryLabel values have explicit mappings:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
-from pynydus.api.schemas import Egg
+from pynydus.api.schemas import Egg, HatchResult, ValidationIssue, ValidationReport
 from pynydus.common.enums import MemoryLabel, SecretKind
 
 
@@ -53,31 +54,35 @@ class LettaHatcher:
 
         if persona_texts:
             bid = f"block-{block_idx}"
-            blocks.append({
-                "id": bid,
-                "label": "persona",
-                "value": "\n\n".join(persona_texts),
-                "limit": 5000,
-                "is_template": False,
-                "read_only": False,
-                "description": None,
-                "metadata": {},
-            })
+            blocks.append(
+                {
+                    "id": bid,
+                    "label": "persona",
+                    "value": "\n\n".join(persona_texts),
+                    "limit": 5000,
+                    "is_template": False,
+                    "read_only": False,
+                    "description": None,
+                    "metadata": {},
+                }
+            )
             block_ids.append(bid)
             block_idx += 1
 
         if human_texts:
             bid = f"block-{block_idx}"
-            blocks.append({
-                "id": bid,
-                "label": "human",
-                "value": "\n\n".join(human_texts),
-                "limit": 5000,
-                "is_template": False,
-                "read_only": False,
-                "description": None,
-                "metadata": {},
-            })
+            blocks.append(
+                {
+                    "id": bid,
+                    "label": "human",
+                    "value": "\n\n".join(human_texts),
+                    "limit": 5000,
+                    "is_template": False,
+                    "read_only": False,
+                    "description": None,
+                    "metadata": {},
+                }
+            )
             block_ids.append(bid)
             block_idx += 1
 
@@ -88,21 +93,23 @@ class LettaHatcher:
         # --- tools from skills ---
         for i, skill in enumerate(egg.skills.skills):
             tid = f"tool-{i}"
-            tools.append({
-                "id": tid,
-                "name": _skill_to_module_name(skill.name),
-                "description": f"Custom tool: {skill.name}",
-                "source_code": skill.content,
-                "source_type": "python",
-                "tool_type": "custom",
-                "tags": [],
-                "json_schema": {
+            tools.append(
+                {
+                    "id": tid,
                     "name": _skill_to_module_name(skill.name),
                     "description": f"Custom tool: {skill.name}",
-                    "parameters": {"type": "object", "properties": {}, "required": []},
-                },
-                "return_char_limit": 50000,
-            })
+                    "source_code": skill.content,
+                    "source_type": "python",
+                    "tool_type": "custom",
+                    "tags": [],
+                    "json_schema": {
+                        "name": _skill_to_module_name(skill.name),
+                        "description": f"Custom tool: {skill.name}",
+                        "parameters": {"type": "object", "properties": {}, "required": []},
+                    },
+                    "return_char_limit": 50000,
+                }
+            )
             tool_ids.append(tid)
 
         # --- credential placeholders -> tool_exec_environment_variables ---
@@ -209,7 +216,7 @@ class LettaHatcher:
         for fname, content in result.files.items():
             fpath = output_dir / fname
             fpath.parent.mkdir(parents=True, exist_ok=True)
-            fpath.write_text(content, encoding='utf-8')
+            fpath.write_text(content, encoding="utf-8")
             files_created.append(fname)
 
         return HatchResult(

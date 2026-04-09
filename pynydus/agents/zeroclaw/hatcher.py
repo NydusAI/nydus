@@ -22,12 +22,16 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from pathlib import Path
 
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import (
     Egg,
+    HatchResult,
     MemoryRecord,
+    ValidationIssue,
+    ValidationReport,
 )
 from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
 from pynydus.common.enums import MemoryLabel, SecretKind
@@ -69,9 +73,7 @@ def _build_config_toml(
     """Build a TOML config string from credentials and source metadata."""
     lines: list[str] = []
 
-    agent_name = source_metadata.get("zeroclaw.agent.name") or source_metadata.get(
-        "zeroclaw.name"
-    )
+    agent_name = source_metadata.get("zeroclaw.agent.name") or source_metadata.get("zeroclaw.name")
     agent_model = source_metadata.get("zeroclaw.agent.model") or source_metadata.get(
         "zeroclaw.model"
     )
@@ -170,9 +172,7 @@ class ZeroClawHatcher:
 
         # --- config.toml (credential placeholders + source metadata) ---
         credentials = [
-            (s.name, s.placeholder)
-            for s in egg.secrets.secrets
-            if s.kind == SecretKind.CREDENTIAL
+            (s.name, s.placeholder) for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL
         ]
         source_metadata = egg.manifest.source_metadata or {}
         toml_content = _build_config_toml(credentials, source_metadata)
@@ -209,7 +209,7 @@ class ZeroClawHatcher:
         for fname, content in result.files.items():
             fpath = output_dir / fname
             fpath.parent.mkdir(parents=True, exist_ok=True)
-            fpath.write_text(content, encoding='utf-8')
+            fpath.write_text(content, encoding="utf-8")
             files_created.append(fname)
 
         # .zeroclaw marker

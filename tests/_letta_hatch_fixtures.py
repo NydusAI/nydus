@@ -42,9 +42,7 @@ def make_af_data() -> dict:
                 "description": "A bot that helps with ML research.",
                 "block_ids": ["blk-0", "blk-1"],
                 "tool_ids": ["tool-0", "tool-1"],
-                "tool_rules": [
-                    {"type": "TerminalToolRule", "tool_name": "send_message"}
-                ],
+                "tool_rules": [{"type": "TerminalToolRule", "tool_name": "send_message"}],
                 "tags": ["research", "ml"],
                 "messages": [
                     {

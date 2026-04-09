@@ -278,7 +278,7 @@ def _load_credentials() -> dict[str, str]:
 def _save_credentials(data: dict[str, str]) -> None:
     """Persist the credentials file."""
     CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CREDENTIALS_PATH.write_text(json.dumps(data, indent=2), encoding='utf-8')
+    CREDENTIALS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _load_token(registry_url: str) -> str | None:
