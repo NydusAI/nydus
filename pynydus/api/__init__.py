@@ -1,4 +1,4 @@
-"""Public types, Egg schema, and errors — the contract layer.
+"""Public Egg schemas, raw spawner/hatcher types, and errors.
 
-This package imports nothing from the rest of pynydus.
+This package does not import other ``pynydus`` subpackages (contract layer).
 """

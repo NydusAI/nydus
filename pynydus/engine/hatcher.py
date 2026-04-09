@@ -1,14 +1,19 @@
 """Hatching pipeline — transforms an Egg into a target runtime. Spec §13.
 
-Symmetric boundaries — secrets cross at the file level:
+Two modes:
+  rebuild     (default) — render from structured egg modules via connector
+  passthrough           — replay redacted raw/ snapshot verbatim
 
-1. Version check  — Verify min_nydus_version
-2. Pass-through   — Check if source == target (same-platform shortcut)
-3. Render         — hatcher.render(egg) -> file dict with placeholders
-4. Secrets IN     — Substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
-5. LLM polish     — Adapt/polish file contents for target platform
-6. Write to disk  — Write all files from dict to output_dir
-7. Hatch log      — Write hatch_log.json
+Pipeline phases:
+  1. Version check — verify min_nydus_version compatibility
+  2. Build file dict — connector.render() (rebuild) or raw snapshot (passthrough)
+  3. LLM polish — adapt/polish on placeholder'd content (no real secrets)
+  4. Secrets IN — substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
+  5. Write to disk
+  6. Hatch log — write hatch_log.json
+
+The LLM never sees real secrets — only placeholder tokens. Real values are
+injected as the last transformation before writing to disk.
 """
 
 from __future__ import annotations
@@ -19,10 +24,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pynydus.api.errors import ConnectorError, HatchError
-from pynydus.api.schemas import Egg, HatchResult, SourceType
+from pynydus.api.schemas import Egg, HatchResult
+from pynydus.common.enums import AgentType, Bucket, HatchMode
 
 if TYPE_CHECKING:
-    from pynydus.pkg.llm import NydusLLMConfig
+    from pynydus.llm import LLMTierConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,86 +36,98 @@ logger = logging.getLogger(__name__)
 def hatch(
     egg: Egg,
     *,
-    target: str,
+    target: AgentType,
     output_dir: Path | None = None,
     secrets_path: Path | None = None,
-    reconstruct: bool = False,
-    llm_config: NydusLLMConfig | None = None,
+    mode: HatchMode = HatchMode.REBUILD,
+    llm_config: LLMTierConfig | None = None,
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
 ) -> HatchResult:
-    """Run the full 7-phase hatching pipeline.
+    """Run the full hatching pipeline (see module docstring for phases).
 
-    Parameters
-    ----------
-    egg:
-        The Egg to hatch (unpacked from a ``.egg`` archive).
-    target:
-        Target runtime: ``"openclaw"``, ``"zeroclaw"``, or ``"letta"``.
-    output_dir:
-        Directory to write target-native files. Defaults to ``./agent``.
-    secrets_path:
-        Path to a ``.env`` file for placeholder resolution (secrets IN).
-    reconstruct:
-        Force full reconstruction even when source and target match.
-    llm_config:
-        Two-tier LLM configuration for target-specific refinement.
-    spawn_log:
-        Spawn pipeline log entries, forwarded to the hatch LLM.
-    raw_artifacts:
-        Redacted source files from the egg archive's ``raw/`` directory.
-        Used for pass-through mode.
+    Args:
+        egg: Egg to hatch (typically from :func:`~pynydus.engine.packager.load`).
+        target: Destination runtime (``openclaw``, ``zeroclaw``, ``letta``).
+        output_dir: Directory for output files; default ``./agent``.
+        secrets_path: ``.env`` file for placeholder substitution (secrets IN).
+        mode: ``rebuild`` (structured ``render()``) or ``passthrough`` (raw snapshot).
+        llm_config: Optional LLM tier for refinement (spawn and hatch).
+        spawn_log: Spawn log entries forwarded to the hatch LLM; defaults to ``egg.spawn_log``.
+        raw_artifacts: Redacted ``raw/`` files; defaults to ``egg.raw_artifacts``.
+            If the egg was loaded with ``include_raw=False``, ``egg.raw_artifacts`` is
+            empty; pass the result of :func:`~pynydus.engine.packager.read_raw_artifacts`
+            or reload with ``include_raw=True`` for passthrough.
 
-    Returns
-    -------
-    HatchResult
-        Output directory, list of created files, warnings, and hatch log.
+    Returns:
+        ``HatchResult`` with output path, files written, warnings, and hatch log.
     """
     output = output_dir or Path("./agent")
     hatch_log: list[dict] = []
     warnings: list[str] = []
 
+    if spawn_log is None and egg.spawn_log:
+        spawn_log = egg.spawn_log
+    if raw_artifacts is None and egg.raw_artifacts:
+        raw_artifacts = egg.raw_artifacts
+
     # --- Phase 1: Version check ---
     _check_version_compat(egg)
 
-    # --- Phase 2: Pass-through check ---
-    is_same_platform = str(egg.manifest.source_type) == target
-    pass_through = is_same_platform and not reconstruct
-    if pass_through:
-        logger.info("Source and target are both %s — pass-through mode", target)
+    source_at = egg.manifest.agent_type
 
-    # --- Phase 3: Render (produces "raw" output with placeholders) ---
-    if pass_through and raw_artifacts:
+    # --- Phase 2–3: Build file dict from modules or raw snapshot ---
+    if mode == HatchMode.PASSTHROUGH:
+        if source_at != target:
+            raise HatchError(
+                f"Hatch mode 'passthrough' requires the target to match the egg agent type "
+                f"({source_at!r}); got {target!r}. Use mode 'rebuild' for cross-platform hatching."
+            )
+        if not raw_artifacts:
+            raise HatchError(
+                "Hatch mode 'passthrough' requires non-empty raw artifacts from the egg's raw/ "
+                "directory. Use load(egg_path) after packing, or pass them from spawn()."
+            )
         file_dict = dict(raw_artifacts)
-        hatch_log.append({
-            "type": "pass_through",
-            "source": str(egg.manifest.source_type),
-            "target": target,
-            "raw_files": len(file_dict),
-        })
+        hatch_log.append(
+            {
+                "type": "raw_snapshot",
+                "source": source_at,
+                "target": target,
+                "raw_files": len(file_dict),
+            }
+        )
     else:
         connector = _get_hatcher(target)
         render_result = connector.render(egg)
         file_dict = dict(render_result.files)
         warnings.extend(render_result.warnings)
-
-        if pass_through:
-            hatch_log.append({
-                "type": "pass_through",
-                "source": str(egg.manifest.source_type),
-                "target": target,
-            })
-        else:
-            hatch_log.append({
-                "type": "transform",
+        hatch_log.append(
+            {
+                "type": "render_from_modules",
                 "phase": "render",
+                "source": source_at,
                 "target": target,
-                "skills": len(egg.skills.skills),
-                "memory": len(egg.memory.memory),
+                Bucket.SKILL: len(egg.skills.skills),
+                Bucket.MEMORY: len(egg.memory.memory),
                 "files": len(file_dict),
-            })
+            }
+        )
 
-    # --- Phase 4: Secrets IN boundary (raw -> target files) ---
+    # --- Phase 4: LLM polish (on placeholder'd content — no real secrets) ---
+    if llm_config is not None and file_dict:
+        from pynydus.engine.refinement import refine_hatch
+
+        file_dict = refine_hatch(
+            file_dict,
+            egg,
+            llm_config,
+            log=hatch_log,
+            spawn_log=spawn_log,
+            raw_artifacts=raw_artifacts,
+        )
+
+    # --- Phase 5: Secrets IN boundary (last transform before disk) ---
     placeholder_map: dict[str, str] = {}
     if secrets_path:
         env_vars = _parse_env_file(secrets_path)
@@ -117,20 +135,12 @@ def hatch(
         if placeholder_map:
             file_dict = _substitute_secrets(file_dict, placeholder_map)
             for placeholder in placeholder_map:
-                hatch_log.append({
-                    "type": "secret_injection",
-                    "placeholder": placeholder,
-                })
-
-    # --- Phase 5: LLM polish ---
-    if llm_config is not None and file_dict:
-        from pynydus.engine.refinement import refine_hatch
-
-        file_dict = refine_hatch(
-            file_dict, egg, llm_config,
-            log=hatch_log, spawn_log=spawn_log,
-            raw_artifacts=raw_artifacts,
-        )
+                hatch_log.append(
+                    {
+                        "type": "secret_injection",
+                        "placeholder": placeholder,
+                    }
+                )
 
     # --- Phase 6: Write to disk ---
     files_created = _write_files(file_dict, output)
@@ -150,13 +160,11 @@ def hatch(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4: Secret substitution
+# Phase 5: Secret substitution (secrets IN boundary)
 # ---------------------------------------------------------------------------
 
 
-def _substitute_secrets(
-    files: dict[str, str], placeholder_map: dict[str, str]
-) -> dict[str, str]:
+def _substitute_secrets(files: dict[str, str], placeholder_map: dict[str, str]) -> dict[str, str]:
     """Replace all {{SECRET_NNN}} / {{PII_NNN}} placeholders with real values."""
     result: dict[str, str] = {}
     for fname, content in files.items():
@@ -206,24 +214,23 @@ def _write_hatch_log(result: HatchResult) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_hatcher(target: str):  # noqa: ANN202
-    """Return the hatcher connector for the given target."""
-    if target == SourceType.OPENCLAW:
-        from pynydus.agents.openclaw.hatcher import OpenClawHatcher
-
-        return OpenClawHatcher()
-
-    if target == SourceType.LETTA:
-        from pynydus.agents.letta.hatcher import LettaHatcher
-
-        return LettaHatcher()
-
-    if target == SourceType.ZEROCLAW:
-        from pynydus.agents.zeroclaw.hatcher import ZeroClawHatcher
-
-        return ZeroClawHatcher()
-
-    raise ConnectorError(f"No hatcher available for target: {target}")
+def _get_hatcher(target: AgentType):  # noqa: ANN202
+    """Return the hatcher connector for the given agent type."""
+    _HATCHERS = {
+        AgentType.OPENCLAW: lambda: __import__(
+            "pynydus.agents.openclaw.hatcher", fromlist=["OpenClawHatcher"]
+        ).OpenClawHatcher(),
+        AgentType.LETTA: lambda: __import__(
+            "pynydus.agents.letta.hatcher", fromlist=["LettaHatcher"]
+        ).LettaHatcher(),
+        AgentType.ZEROCLAW: lambda: __import__(
+            "pynydus.agents.zeroclaw.hatcher", fromlist=["ZeroClawHatcher"]
+        ).ZeroClawHatcher(),
+    }
+    factory = _HATCHERS.get(target)
+    if factory is None:
+        raise ConnectorError(f"No hatcher available for: {target}")
+    return factory()
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +270,7 @@ def _build_placeholder_map(
 
     if missing_required:
         raise HatchError(
-            f"Missing required secrets in {secrets_path}: "
-            f"{', '.join(missing_required)}"
+            f"Missing required secrets in {secrets_path}: {', '.join(missing_required)}"
         )
     return placeholder_map
 

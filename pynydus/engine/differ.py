@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from pynydus.api.schemas import DiffEntry, DiffReport, Egg
+from pynydus.api.schemas import DiffEntry, DiffReport, Egg, ManifestChange
+from pynydus.common.enums import Bucket, DiffChange
 
 
 def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
@@ -14,46 +15,45 @@ def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
     Records are matched by ``id``. For matched records, individual
     fields are compared. Unmatched records are reported as added/removed.
     """
+    manifest_changes = _diff_manifest(egg_a, egg_b)
     entries: list[DiffEntry] = []
 
-    entries.extend(_diff_manifest(egg_a, egg_b))
     entries.extend(
         _diff_records(
-            [s for s in egg_a.skills.skills],
-            [s for s in egg_b.skills.skills],
-            section="skills",
+            list(egg_a.skills.skills),
+            list(egg_b.skills.skills),
+            bucket=Bucket.SKILL,
             compare_fields=["name", "content"],
         )
     )
     entries.extend(
         _diff_records(
-            [m for m in egg_a.memory.memory],
-            [m for m in egg_b.memory.memory],
-            section="memory",
+            list(egg_a.memory.memory),
+            list(egg_b.memory.memory),
+            bucket=Bucket.MEMORY,
             compare_fields=["text", "label"],
         )
     )
     entries.extend(
         _diff_records(
-            [s for s in egg_a.secrets.secrets],
-            [s for s in egg_b.secrets.secrets],
-            section="secrets",
+            list(egg_a.secrets.secrets),
+            list(egg_b.secrets.secrets),
+            bucket=Bucket.SECRET,
             compare_fields=["placeholder", "kind", "name", "required_at_hatch"],
         )
     )
 
-    return DiffReport(identical=len(entries) == 0, entries=entries)
+    identical = len(manifest_changes) == 0 and len(entries) == 0
+    return DiffReport(identical=identical, manifest_changes=manifest_changes, entries=entries)
 
 
-def _diff_manifest(egg_a: Egg, egg_b: Egg) -> list[DiffEntry]:
+def _diff_manifest(egg_a: Egg, egg_b: Egg) -> list[ManifestChange]:
     """Compare manifest fields (skip created_at — always differs)."""
-    entries: list[DiffEntry] = []
+    changes: list[ManifestChange] = []
     fields = [
         "nydus_version",
         "egg_version",
-        "source_type",
-        "source_connector",
-        "build_intent",
+        "agent_type",
         "included_modules",
     ]
 
@@ -61,37 +61,26 @@ def _diff_manifest(egg_a: Egg, egg_b: Egg) -> list[DiffEntry]:
         val_a = getattr(egg_a.manifest, field)
         val_b = getattr(egg_b.manifest, field)
         if val_a != val_b:
-            entries.append(
-                DiffEntry(
-                    section="manifest",
-                    change="modified",
-                    field=field,
-                    old=str(val_a),
-                    new=str(val_b),
-                )
-            )
+            changes.append(ManifestChange(field=field, old=str(val_a), new=str(val_b)))
 
-    # Compare redaction policy
     pol_a = egg_a.manifest.redaction_policy
     pol_b = egg_b.manifest.redaction_policy
     if pol_a != pol_b:
-        entries.append(
-            DiffEntry(
-                section="manifest",
-                change="modified",
+        changes.append(
+            ManifestChange(
                 field="redaction_policy",
                 old=str(pol_a.model_dump() if pol_a else None),
                 new=str(pol_b.model_dump() if pol_b else None),
             )
         )
 
-    return entries
+    return changes
 
 
 def _diff_records(
     a_list: list[BaseModel],
     b_list: list[BaseModel],
-    section: str,
+    bucket: Bucket,
     compare_fields: list[str],
 ) -> list[DiffEntry]:
     """Generic ID-based record comparison."""
@@ -111,8 +100,8 @@ def _diff_records(
         display = str(name)[:80]
         entries.append(
             DiffEntry(
-                section=section,
-                change="removed",
+                bucket=bucket,
+                change=DiffChange.REMOVED,
                 id=rid,
                 old=display,
             )
@@ -125,8 +114,8 @@ def _diff_records(
         display = str(name)[:80]
         entries.append(
             DiffEntry(
-                section=section,
-                change="added",
+                bucket=bucket,
+                change=DiffChange.ADDED,
                 id=rid,
                 new=display,
             )
@@ -142,8 +131,8 @@ def _diff_records(
             if val_a != val_b:
                 entries.append(
                     DiffEntry(
-                        section=section,
-                        change="modified",
+                        bucket=bucket,
+                        change=DiffChange.MODIFIED,
                         id=rid,
                         field=field,
                         old=str(val_a)[:200],

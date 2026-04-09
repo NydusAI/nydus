@@ -1,12 +1,13 @@
 # Advanced
 
-Guides for Egg signing, the Nest registry, and extending pynydus with new
-framework connectors.
+Architecture internals, how to add new platform connectors, and common
+troubleshooting tips.
+
 
 ```{toctree}
 :maxdepth: 2
 
-signing
-nest
-connectors
+architecture
+adding-connectors
+troubleshooting
 ```

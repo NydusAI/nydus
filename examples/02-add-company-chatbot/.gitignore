@@ -1,0 +1,4 @@
+*.egg
+hatched*/
+hatch.env
+hatch.env.filled

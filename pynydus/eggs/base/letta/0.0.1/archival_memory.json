@@ -1,0 +1,4 @@
+[
+  {"text": "Letta agents use memory blocks (persona, human, system) to maintain persistent context across conversations."},
+  {"text": "Tools should have clear docstrings and type hints for proper integration with the Letta runtime."}
+]

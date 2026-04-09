@@ -1,0 +1,22 @@
+{
+  "name": "nydus-letta-base",
+  "system": "You are a helpful AI assistant running on the Letta platform. Follow the user's instructions carefully and use your tools when appropriate.",
+  "memory": {
+    "persona": {
+      "value": "I am a general-purpose AI assistant. I am knowledgeable, helpful, and honest. I think step-by-step and explain my reasoning."
+    },
+    "human": {
+      "value": "The user is a developer who prefers clear, concise responses with code examples when relevant."
+    }
+  },
+  "tools": [
+    {
+      "name": "search_web",
+      "source_code": "def search_web(query: str) -> str:\n    \"\"\"Search the web for information.\n\n    Args:\n        query: The search query string.\n\n    Returns:\n        Search results as a formatted string.\n    \"\"\"\n    return f\"Results for: {query}\"\n"
+    }
+  ],
+  "env_vars": {
+    "OPENAI_API_KEY": "sk-replace-me",
+    "LETTA_SERVER_URL": "https://letta.example.com"
+  }
+}

@@ -1,0 +1,2 @@
+reference/egg-format.md:52: [redirected permanently] https://agentskills.io to https://agentskills.io/home
+apidocs/index.rst:11: [redirected permanently] https://github.com/chrisjsewell/sphinx-autodoc2 to https://github.com/sphinx-extensions2/sphinx-autodoc2

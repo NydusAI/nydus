@@ -19,28 +19,24 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pynydus.api.errors import ConnectorError
 from pynydus.api.raw_types import (
     ParseResult,
     RawMemory,
     RawSkill,
 )
-from pynydus.api.schemas import (
-    MemoryLabel,
-    ValidationIssue,
-    ValidationReport,
-)
-from pynydus.pkg.connector_utils import (
+from pynydus.common.connector_utils import (
     parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
+)
+from pynydus.common.connector_utils import (
     split_paragraphs as _split_paragraphs,
 )
+from pynydus.common.enums import MemoryLabel
 
 _PERSONA_FILES = ("SOUL.md", "soul.md", "IDENTITY.md")
 _FLOW_FILES = ("AGENTS.md", "agents.md", "BOOT.md", "HEARTBEAT.md")
 _CONTEXT_FILES = ("USER.md", "user.md", "TOOLS.md")
 _STATE_FILES = ("knowledge.md", "MEMORY.md")
 _SKILL_FILES = ("skill.md", "skills.md")
-_CONFIG_FILES = ("config.yaml", "config.yml", "config.json")
 
 FILE_PATTERNS = ["*.md", "*.yaml", "*.yml", "*.json", "*.txt", "skills/*.md", "memory/*.md"]
 """Glob patterns the pipeline uses to read source files from disk."""
@@ -57,56 +53,23 @@ class OpenClawSpawner:
             return False
         has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
         has_skill = (
-            any((input_path / f).exists() for f in _SKILL_FILES)
-            or (input_path / "skills").is_dir()
+            any((input_path / f).exists() for f in _SKILL_FILES) or (input_path / "skills").is_dir()
         )
         return has_persona or has_skill
 
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Parse pre-redacted file contents into raw skills and memory.
 
-        Parameters
-        ----------
-        files:
-            Mapping of ``filename -> UTF-8 content`` (already redacted).
+        Args:
+            files: ``filename -> UTF-8 content`` (already redacted).
 
-        Returns
-        -------
-        ParseResult
-            Skills, memory, and MCP configs extracted from the files.
+        Returns:
+            Skills, memory, and MCP configs.
         """
         skills = self._parse_skills(files)
         memories = self._parse_memories(files)
         mcp_configs = self._parse_mcp_configs(files)
         return ParseResult(skills=skills, memory=memories, mcp_configs=mcp_configs)
-
-    def validate(self, input_path: Path) -> ValidationReport:
-        """Validate an OpenClaw source before spawning."""
-        issues: list[ValidationIssue] = []
-        if not input_path.is_dir():
-            issues.append(
-                ValidationIssue(
-                    level="error",
-                    message=f"Not a directory: {input_path}",
-                    location=str(input_path),
-                )
-            )
-            return ValidationReport(valid=False, issues=issues)
-
-        has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
-        has_skill = (
-            any((input_path / f).exists() for f in _SKILL_FILES)
-            or (input_path / "skills").is_dir()
-        )
-        if not has_persona and not has_skill:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message="No SOUL.md/soul.md or skill.md found — Egg will be sparse",
-                    location=str(input_path),
-                )
-            )
-        return ValidationReport(valid=not any(i.level == "error" for i in issues), issues=issues)
 
     # ------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)

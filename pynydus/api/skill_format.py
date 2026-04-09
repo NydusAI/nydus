@@ -14,7 +14,7 @@ Markdown body.  The frontmatter fields follow the Agent Skills spec:
     allowed-tools (optional)  List of permitted tool names
     metadata      (optional)  Arbitrary key-value pairs
 
-Non-spec fields (e.g. ``source_framework``, ``tags``) are stored inside the
+Non-spec fields (e.g. ``agent_type``, ``tags``) are stored inside the
 ``metadata`` map so the frontmatter remains spec-compliant.
 """
 
@@ -25,7 +25,6 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # AgentSkill model
@@ -57,12 +56,18 @@ _FRONTMATTER_RE = re.compile(
 
 
 def parse_skill_md(text: str) -> AgentSkill:
-    """Parse a SKILL.md string into an :class:`AgentSkill`.
+    """Parse a SKILL.md string into ``AgentSkill``.
 
-    Expects optional YAML front-matter (``---``-fenced) followed by a Markdown
-    body.  All spec fields (``name``, ``description``, ``version``, ``license``,
-    ``compatibility``, ``allowed-tools``, ``metadata``) are extracted. Any
-    unrecognized top-level keys are folded into ``metadata``.
+    Args:
+        text: Full file contents; optional YAML front-matter (``---`` fences)
+            then Markdown body. Spec fields are parsed; unknown keys go into
+            ``metadata``.
+
+    Returns:
+        Parsed skill model.
+
+    Raises:
+        ValueError: If there is no name and no body.
     """
     m = _FRONTMATTER_RE.match(text)
     if m:
@@ -77,8 +82,13 @@ def parse_skill_md(text: str) -> AgentSkill:
         raise ValueError("SKILL.md must contain at least a name in front-matter or a body")
 
     _SPEC_KEYS = {
-        "name", "description", "version", "license",
-        "compatibility", "allowed-tools", "metadata",
+        "name",
+        "description",
+        "version",
+        "license",
+        "compatibility",
+        "allowed-tools",
+        "metadata",
     }
     extra: dict[str, Any] = {}
     for key in list(meta):
@@ -103,10 +113,17 @@ def parse_skill_md(text: str) -> AgentSkill:
 
 
 def render_skill_md(skill: AgentSkill) -> str:
-    """Serialize an :class:`AgentSkill` to spec-compliant SKILL.md text.
+    """Serialize ``AgentSkill`` to spec-compliant SKILL.md text.
 
-    Only spec-defined keys appear as top-level frontmatter fields.
-    Non-spec data lives inside the ``metadata`` map.
+    Args:
+        skill: Parsed or constructed skill model.
+
+    Returns:
+        Front-matter plus body string.
+
+    Note:
+        Only spec keys are top-level YAML fields; extra data stays under
+        ``metadata``.
     """
     meta: dict[str, Any] = {"name": skill.name}
     meta["description"] = skill.description or skill.name
@@ -137,13 +154,17 @@ _CONSECUTIVE_HYPHENS = re.compile(r"-{2,}")
 
 
 def skill_slug(name: str) -> str:
-    """Convert a skill name to a spec-compliant filesystem-safe slug.
+    """Convert a display name to a filesystem-safe slug.
 
-    Spec constraints: max 64 chars, no consecutive hyphens, no
-    leading/trailing hyphens.
+    Args:
+        name: Human-readable skill name.
 
-    >>> skill_slug("My Cool Skill!")
-    'my-cool-skill'
+    Returns:
+        Lowercase slug (max 64 chars, no repeated or edge hyphens).
+
+    Examples:
+        >>> skill_slug("My Cool Skill!")
+        'my-cool-skill'
     """
     slug = _SLUG_RE.sub("-", name.lower()).strip("-")
     slug = _CONSECUTIVE_HYPHENS.sub("-", slug)
@@ -157,17 +178,19 @@ def skill_slug(name: str) -> str:
 
 
 def skill_record_to_agent_skill(record: Any) -> AgentSkill:
-    """Convert a :class:`~pynydus.api.schemas.SkillRecord` to an AgentSkill.
+    """Convert a ``SkillRecord``-like object to ``AgentSkill``.
 
-    Uses duck-typing so we don't create a circular import.
-    Non-spec fields (``source_framework``, ``tags``) are placed into
-    ``metadata``.
+    Args:
+        record: Duck-typed skill record (avoids circular imports).
+
+    Returns:
+        ``AgentSkill`` with non-spec fields folded into ``metadata``.
     """
     rec_meta = getattr(record, "metadata", {}) or {}
 
     extra_metadata: dict[str, Any] = {}
-    if record.source_type:
-        extra_metadata["source_framework"] = record.source_type
+    if record.agent_type:
+        extra_metadata["source_framework"] = record.agent_type
     tags_raw = rec_meta.get("tags", "")
     if tags_raw:
         tags_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
@@ -193,11 +216,17 @@ def agent_skill_to_skill_record(
     skill: AgentSkill,
     *,
     skill_id: str = "",
-    source_type: str = "",
+    agent_type: str = "",
 ) -> dict[str, Any]:
-    """Convert an :class:`AgentSkill` to a SkillRecord dict.
+    """Convert ``AgentSkill`` to kwargs for ``SkillRecord``.
 
-    Returns a dict suitable for ``SkillRecord(**result)``.
+    Args:
+        skill: Parsed skill.
+        skill_id: Record id to assign.
+        agent_type: Framework tag when not taken from metadata.
+
+    Returns:
+        Dict suitable for ``SkillRecord(**result)``.
     """
     metadata: dict[str, str] = {}
     if skill.description:
@@ -211,12 +240,12 @@ def agent_skill_to_skill_record(
     if isinstance(meta_tags, list) and meta_tags:
         metadata["tags"] = ", ".join(str(t) for t in meta_tags)
 
-    resolved_source = source_type or skill.metadata.get("source_framework", "")
+    resolved_agent_type = agent_type or skill.metadata.get("source_framework", "")
 
     return {
         "id": skill_id,
         "name": skill.name,
-        "source_type": resolved_source,
+        "agent_type": resolved_agent_type,
         "content": skill.body,
         "metadata": metadata,
     }

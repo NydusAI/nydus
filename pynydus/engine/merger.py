@@ -13,15 +13,19 @@ from pynydus.api.errors import HatchError, NydusfileError
 from pynydus.api.schemas import (
     Egg,
     EggPartial,
-    InjectionMode,
-    MemoryLabel,
     MemoryModule,
     MemoryRecord,
-    SecretKind,
     SecretRecord,
     SecretsModule,
     SkillRecord,
     SkillsModule,
+)
+from pynydus.common.enums import (
+    Bucket,
+    Directive,
+    InjectionMode,
+    MemoryLabel,
+    SecretKind,
 )
 from pynydus.engine.nydusfile import MergeOp
 
@@ -37,18 +41,27 @@ def load_base_egg(egg_path: str) -> Egg:
     if not path.exists():
         raise HatchError(f"Base egg not found: {egg_path}")
 
-    from pynydus.engine.packager import unpack
+    from pynydus.engine.packager import _unpack_egg_core
 
-    return unpack(path)
+    return _unpack_egg_core(path)
 
 
-def merge(base_egg: Egg, ops: list[MergeOp]) -> EggPartial:
+def merge(
+    base_egg: Egg,
+    ops: list[MergeOp],
+    *,
+    base_dir: Path | None = None,
+) -> EggPartial:
     """Apply merge operations to a base egg and return the resulting EggPartial.
 
-    The base egg's skills, memory, and secrets are copied into a new EggPartial,
-    then each operation is applied in order.
+    Args:
+        base_egg: Loaded base Egg.
+        ops: Parsed ``ADD`` / ``SET`` / ``REMOVE`` operations.
+        base_dir: Nydusfile directory; relative paths in values resolve here.
+
+    Returns:
+        Partial egg with merged modules.
     """
-    # Start with a copy of the base egg's data
     partial = EggPartial(
         skills=SkillsModule(skills=list(base_egg.skills.skills)),
         memory=MemoryModule(memory=list(base_egg.memory.memory)),
@@ -57,11 +70,11 @@ def merge(base_egg: Egg, ops: list[MergeOp]) -> EggPartial:
     )
 
     for op in ops:
-        if op.action == "add":
-            _apply_add(partial, op)
-        elif op.action == "set":
-            _apply_set(partial, op)
-        elif op.action == "remove":
+        if op.action is Directive.ADD:
+            _apply_add(partial, op, base_dir)
+        elif op.action is Directive.SET:
+            _apply_set(partial, op, base_dir)
+        elif op.action is Directive.REMOVE:
             _apply_remove(partial, op)
         else:
             raise NydusfileError(f"Unknown merge action: {op.action}")
@@ -69,11 +82,10 @@ def merge(base_egg: Egg, ops: list[MergeOp]) -> EggPartial:
     return partial
 
 
-def _apply_add(partial: EggPartial, op: MergeOp) -> None:
+def _apply_add(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
     """Add a new record to the specified bucket."""
-    if op.bucket == "memory":
-        # Value is either inline text or a file path
-        text = _resolve_value(op.value)
+    if op.bucket is Bucket.MEMORY:
+        text = _resolve_value(op.value, base_dir)
         label_str = _extract_label_from_key(op.key) if op.key else None
         try:
             label = MemoryLabel(label_str) if label_str else MemoryLabel.STATE
@@ -85,25 +97,25 @@ def _apply_add(partial: EggPartial, op: MergeOp) -> None:
                 id=next_id,
                 text=text,
                 label=label,
-                source_framework="nydusfile",
+                agent_type="nydusfile",
                 source_store="merge_add",
             )
         )
 
-    elif op.bucket == "skill":
-        text = _resolve_value(op.value)
+    elif op.bucket is Bucket.SKILL:
+        text = _resolve_value(op.value, base_dir)
         name = op.key if op.key else _infer_skill_name(op.value)
         next_id = f"skill_{len(partial.skills.skills) + 1:03d}"
         partial.skills.skills.append(
             SkillRecord(
                 id=next_id,
                 name=name,
-                source_type="merge_add",
+                agent_type="merge_add",
                 content=text,
             )
         )
 
-    elif op.bucket == "secret":
+    elif op.bucket is Bucket.SECRET:
         name = op.value.strip()
         next_id = f"secret_{len(partial.secrets.secrets) + 1:03d}"
         placeholder = f"{{{{{name}}}}}"
@@ -115,55 +127,56 @@ def _apply_add(partial: EggPartial, op: MergeOp) -> None:
                 name=name,
                 required_at_hatch=True,
                 injection_mode=InjectionMode.ENV,
-                description=f"Added via Nydusfile merge",
+                description="Added via Nydusfile merge",
             )
         )
 
 
-def _apply_set(partial: EggPartial, op: MergeOp) -> None:
-    """Replace a record matching the selector."""
+def _apply_set(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
+    """Replace all records matching the selector."""
     selector_key, selector_val = _parse_selector(op.key)
-    new_text = _resolve_value(op.value)
+    new_text = _resolve_value(op.value, base_dir)
+    matched = False
 
-    if op.bucket == "memory":
+    if op.bucket is Bucket.MEMORY:
         for i, rec in enumerate(partial.memory.memory):
             if _matches_selector(rec, selector_key, selector_val):
                 partial.memory.memory[i] = rec.model_copy(update={"text": new_text})
-                return
-        logger.warning("SET memory.%s=%s: no matching record found", selector_key, selector_val)
+                matched = True
 
-    elif op.bucket == "skill":
+    elif op.bucket is Bucket.SKILL:
         for i, rec in enumerate(partial.skills.skills):
             if _matches_selector(rec, selector_key, selector_val):
                 partial.skills.skills[i] = rec.model_copy(update={"content": new_text})
-                return
-        logger.warning("SET skill.%s=%s: no matching record found", selector_key, selector_val)
+                matched = True
+
+    if not matched:
+        logger.warning(
+            "SET %s.%s=%s: no matching record found", op.bucket, selector_key, selector_val
+        )
 
 
 def _apply_remove(partial: EggPartial, op: MergeOp) -> None:
     """Remove records matching the key/selector."""
-    if op.bucket == "memory":
+    if op.bucket is Bucket.MEMORY:
         if "=" in op.key:
             selector_key, selector_val = _parse_selector(op.key)
             partial.memory.memory = [
-                r for r in partial.memory.memory
+                r
+                for r in partial.memory.memory
                 if not _matches_selector(r, selector_key, selector_val)
             ]
         else:
-            partial.memory.memory = [
-                r for r in partial.memory.memory if r.id != op.key
-            ]
+            partial.memory.memory = [r for r in partial.memory.memory if r.id != op.key]
 
-    elif op.bucket == "skill":
+    elif op.bucket is Bucket.SKILL:
         partial.skills.skills = [
-            s for s in partial.skills.skills
-            if s.name != op.key and s.id != op.key
+            s for s in partial.skills.skills if s.name != op.key and s.id != op.key
         ]
 
-    elif op.bucket == "secret":
+    elif op.bucket is Bucket.SECRET:
         partial.secrets.secrets = [
-            s for s in partial.secrets.secrets
-            if s.name != op.key and s.id != op.key
+            s for s in partial.secrets.secrets if s.name != op.key and s.id != op.key
         ]
 
 
@@ -172,13 +185,25 @@ def _apply_remove(partial: EggPartial, op: MergeOp) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_value(value: str) -> str:
-    """If value looks like a file path, read its contents. Otherwise return as-is."""
-    if value.startswith("./") or value.startswith("../") or value.startswith("/"):
-        path = Path(value)
-        if path.exists() and path.is_file():
-            return path.read_text()
-    return value
+def _resolve_value(value: str, base_dir: Path | None = None) -> str:
+    """If value looks like a file path, read its contents. Otherwise return as-is.
+
+    Relative paths are resolved against *base_dir* (the Nydusfile's directory).
+    Raises ``NydusfileError`` if the value looks like a path but the file does
+    not exist.
+    """
+    if not value.startswith(("./", "../", "/")):
+        return value
+
+    path = Path(value)
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / value
+
+    if not path.exists():
+        raise NydusfileError(f"File not found: {path}")
+    if not path.is_file():
+        raise NydusfileError(f"Not a file: {path}")
+    return path.read_text()
 
 
 def _parse_selector(selector: str) -> tuple[str, str]:

@@ -1,34 +1,52 @@
-"""Nydus error hierarchy."""
+"""Nydus exception hierarchy.
+
+All user-visible failures from PyNydus inherit from ``NydusError``.
+"""
 
 
 class NydusError(Exception):
-    """Base error for all Nydus operations."""
+    """Base class for Nydus failures."""
 
 
 class NydusfileError(NydusError):
-    """Error parsing or validating a Nydusfile."""
+    """Raised when a Nydusfile cannot be parsed or validated."""
 
     def __init__(self, message: str, line: int | None = None):
+        """Build a Nydusfile error, optionally tied to a line number.
+
+        Args:
+            message: Human-readable explanation.
+            line: Source line in the Nydusfile, if known.
+        """
         self.line = line
         prefix = f"line {line}: " if line is not None else ""
         super().__init__(f"{prefix}{message}")
 
 
 class ConnectorError(NydusError):
-    """Error in a spawner or hatcher connector."""
+    """Raised when a spawner or hatcher connector fails."""
 
 
 class EggError(NydusError):
-    """Error reading, writing, or packaging an Egg."""
+    """Raised when an Egg cannot be read, written, or packaged."""
 
 
 class HatchError(NydusError):
-    """Error during the hatching pipeline."""
+    """Raised when the hatching pipeline fails."""
 
 
 class ConfigError(NydusError):
-    """Error in Nydus configuration."""
+    """Raised when Nydus configuration is invalid or missing."""
+
+
+class GitleaksNotFoundError(NydusError):
+    """Raised when secret scanning is required but gitleaks is not available.
+
+    Spawn with ``REDACT true`` and ``SOURCE`` needs the ``gitleaks`` CLI.
+    Install from https://github.com/gitleaks/gitleaks or set
+    ``NYDUS_GITLEAKS_PATH`` to the binary path.
+    """
 
 
 class RegistryError(NydusError):
-    """Error communicating with the Nest registry."""
+    """Raised when the Nest registry request fails."""

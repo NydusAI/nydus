@@ -1,10 +1,10 @@
 """LLM refinement for spawning and hatching pipelines.
 
-Spawning (Phase 7): ``refine_skills`` / ``refine_memory`` use the simple
+Spawning (Phase 7): ``refine_skills`` / ``refine_memory`` use the configured
 LLM tier to deduplicate memory records and normalize skill formatting.
 The LLM always operates on already-redacted content.
 
-Hatching (Phase 5): ``refine_hatch`` uses the complex LLM tier to adapt
+Hatching (Phase 4): ``refine_hatch`` uses the same tier to adapt or polish
 reconstructed files for the target platform's conventions.
 """
 
@@ -12,19 +12,20 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from pynydus.api.schemas import (
     Egg,
     EggPartial,
-    MemoryLabel,
     MemoryModule,
     MemoryRecord,
     SkillRecord,
     SkillsModule,
 )
-from pynydus.pkg.llm import NydusLLMConfig, create_completion
+from pynydus.common.enums import AgentType, MemoryLabel
+from pynydus.llm import LLMTierConfig, create_completion
 
 logger = logging.getLogger(__name__)
 
@@ -128,24 +129,17 @@ reconstructed for {target_type}.
 Your task is to adapt the generated files so they follow the idiomatic conventions \
 and best practices of the target platform.
 
-Platform conventions:
-- OpenClaw: Markdown files. soul.md contains persona/personality. agents.md contains \
-orchestration rules. user.md contains user context. knowledge.md contains persistent state. \
-skill.md uses # headings for each skill with natural language descriptions.
-- Letta: JSON-based agent_state.json with memory blocks (persona, human, system). \
-Tools in tools/ as Python files with docstrings. archival_memory.json for persistent state.
-- ZeroClaw: Similar to OpenClaw workspace. persona.md for persona, agents.md for flow, \
-user.md for context, knowledge.md for state. tools/ for Python tool files.
+Source platform specification:
+{source_spec}
+
+Target platform specification:
+{target_spec}
 
 Adaptation rules:
 1. Adjust tone and structure to match target platform idioms.
-2. For OpenClaw targets: ensure markdown is clean, headings are consistent, prose is natural.
-3. For Letta targets: ensure JSON is well-structured, Python tools have proper docstrings \
-and type hints, memory blocks respect character limits.
-4. For ZeroClaw targets: ensure markdown files are clean, Python tools are well-formatted.
-5. Do NOT alter factual content or the agent's personality/knowledge.
-6. Do NOT modify secret placeholders like {{SECRET_001}} or {{PII_001}}.
-7. Only return files that you actually changed. If a file needs no adaptation, omit it."""
+2. Do NOT alter factual content or the agent's personality/knowledge.
+3. Do NOT modify secret placeholders like {{SECRET_001}} or {{PII_001}}.
+4. Only return files that you actually changed. If a file needs no adaptation, omit it."""
 
 _HATCH_POLISH_PROMPT = """\
 You are a polishing engine for an AI agent migration system.
@@ -153,14 +147,8 @@ An agent built for {target_type} has been reconstructed for the same platform.
 Your task is to polish and improve the generated files so they follow the \
 idiomatic conventions and best practices of {target_type}.
 
-Platform conventions:
-- OpenClaw: Markdown files. soul.md contains persona/personality. agents.md contains \
-orchestration rules. user.md contains user context. knowledge.md contains persistent state. \
-skill.md uses # headings for each skill with natural language descriptions.
-- Letta: JSON-based agent_state.json with memory blocks (persona, human, system). \
-Tools in tools/ as Python files with docstrings. archival_memory.json for persistent state.
-- ZeroClaw: Similar to OpenClaw workspace. persona.md for persona, agents.md for flow, \
-user.md for context, knowledge.md for state. tools/ for Python tool files.
+Platform specification:
+{target_spec}
 
 Polishing rules:
 1. Fix formatting inconsistencies: normalize headings, whitespace, and structure.
@@ -172,38 +160,54 @@ Polishing rules:
 
 
 # ---------------------------------------------------------------------------
+# AGENT_SPEC.md loader
+# ---------------------------------------------------------------------------
+
+_AGENT_SPEC_DIR = Path(__file__).parent.parent / "agents"
+
+
+def _load_agent_spec(agent_type: AgentType) -> str:
+    """Load the AGENT_SPEC.md for a given agent type."""
+    spec_path = _AGENT_SPEC_DIR / agent_type.value / "AGENT_SPEC.md"
+    if spec_path.exists():
+        return spec_path.read_text()
+    return f"No specification available for {agent_type.value}."
+
+
+# ---------------------------------------------------------------------------
 # Standalone refinement helpers (used by pipeline Phase 7)
 # ---------------------------------------------------------------------------
 
 
 def refine_skills(
     skills: SkillsModule,
-    config: NydusLLMConfig,
+    llm_config: LLMTierConfig,
     spawn_log: list[dict] | None = None,
 ) -> SkillsModule:
     """Standalone skill refinement — delegates to _refine_skills via EggPartial."""
     from pynydus.api.schemas import MemoryModule
 
-    partial = EggPartial(skills=skills, memory=MemoryModule(), spawn_log=spawn_log or [])
-    partial = _refine_skills(partial, config)
+    partial = EggPartial(skills=skills, memory=MemoryModule())
+    partial = _refine_skills(partial, llm_config)
+    if spawn_log is not None:
+        spawn_log.extend(partial.spawn_log)
     return partial.skills
 
 
 def refine_memory(
     memory: MemoryModule,
-    config: NydusLLMConfig,
+    llm_config: LLMTierConfig,
     spawn_log: list[dict] | None = None,
 ) -> MemoryModule:
     """Standalone memory refinement — delegates to _refine_memory via EggPartial."""
-    partial = EggPartial(skills=SkillsModule(), memory=memory, spawn_log=spawn_log or [])
-    partial = _refine_memory(partial, config)
+    partial = EggPartial(skills=SkillsModule(), memory=memory)
+    partial = _refine_memory(partial, llm_config)
+    if spawn_log is not None:
+        spawn_log.extend(partial.spawn_log)
     return partial.memory
 
 
-
-def _refine_memory(
-    partial: EggPartial, config: NydusLLMConfig
-) -> EggPartial:
+def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial:
     """Deduplicate and summarize memory records via LLM."""
     records = partial.memory.memory
     lookup: dict[str, MemoryRecord] = {r.id: r for r in records}
@@ -228,7 +232,7 @@ def _refine_memory(
     ]
 
     result = create_completion(
-        config.simple,
+        llm_config,
         messages=messages,
         response_model=RefinedMemoryOutput,
         log=partial.spawn_log,
@@ -257,9 +261,29 @@ def _refine_memory(
         # Determine ID
         if len(refined.original_ids) == 1 and refined.original_ids[0] in lookup:
             record_id = refined.original_ids[0]
+            partial.spawn_log.append(
+                {
+                    "type": "memory_refined",
+                    "record_id": record_id,
+                    "text_changed": refined.text != lookup[record_id].text,
+                    "original_length": len(lookup[record_id].text),
+                    "refined_length": len(refined.text),
+                }
+            )
         else:
             merge_counter += 1
             record_id = f"mem_merged_{merge_counter:03d}"
+            partial.spawn_log.append(
+                {
+                    "type": "memory_merge",
+                    "merged_ids": refined.original_ids,
+                    "result_id": record_id,
+                    "original_texts_length": [
+                        len(lookup[oid].text) for oid in refined.original_ids if oid in lookup
+                    ],
+                    "result_text_length": len(refined.text),
+                }
+            )
 
         new_record = source_record.model_copy(
             update={
@@ -270,13 +294,20 @@ def _refine_memory(
         )
         new_memory.append(new_record)
 
+    partial.spawn_log.append(
+        {
+            "type": "memory_refinement_done",
+            "input_count": len(records),
+            "output_count": len(new_memory),
+            "merges": merge_counter,
+        }
+    )
+
     partial.memory.memory = new_memory
     return partial
 
 
-def _refine_skills(
-    partial: EggPartial, config: NydusLLMConfig
-) -> EggPartial:
+def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial:
     """Clean up skill names and formatting via LLM."""
     skills = partial.skills.skills
     lookup: dict[str, SkillRecord] = {s.id: s for s in skills}
@@ -301,7 +332,7 @@ def _refine_skills(
     ]
 
     result = create_completion(
-        config.simple,
+        llm_config,
         messages=messages,
         response_model=RefinedSkillsOutput,
         log=partial.spawn_log,
@@ -317,6 +348,17 @@ def _refine_skills(
             logger.warning("Refined skill references unknown ID %s, skipping", refined.original_id)
             continue
 
+        partial.spawn_log.append(
+            {
+                "type": "skill_refined",
+                "skill_id": refined.original_id,
+                "name_changed": refined.name != original.name,
+                "old_name": original.name,
+                "new_name": refined.name,
+                "content_changed": refined.content != original.content,
+            }
+        )
+
         new_skill = original.model_copy(
             update={
                 "name": refined.name,
@@ -324,6 +366,14 @@ def _refine_skills(
             }
         )
         new_skills.append(new_skill)
+
+    partial.spawn_log.append(
+        {
+            "type": "skill_refinement_done",
+            "input_count": len(skills),
+            "output_count": len(new_skills),
+        }
+    )
 
     partial.skills.skills = new_skills
     return partial
@@ -334,71 +384,31 @@ def _refine_skills(
 # ---------------------------------------------------------------------------
 
 
-def _summarize_spawn_log(spawn_log: list[dict]) -> str:
-    """Produce a short textual summary of spawn-time events for the hatch LLM.
+def _serialize_spawn_log(spawn_log: list[dict]) -> str:
+    """Serialize the full spawn log as JSON for inclusion in the hatch LLM prompt.
 
-    Groups entries by type and reports counts and notable details so the
-    hatch-side LLM can make better adaptation decisions.
+    Returns the complete, unfiltered log so the LLM can decide what is relevant.
     """
-    from collections import Counter
-
     if not spawn_log:
         return ""
-
-    by_type: dict[str, list[dict]] = {}
-    for entry in spawn_log:
-        by_type.setdefault(entry.get("type", "unknown"), []).append(entry)
-
-    parts: list[str] = []
-
-    # Redactions
-    redactions = by_type.get("redaction", [])
-    if redactions:
-        pii_counts = Counter(e.get("pii_type", "unknown") for e in redactions)
-        detail = ", ".join(f"{n} {t}" for t, n in pii_counts.most_common())
-        parts.append(f"- {len(redactions)} PII redactions ({detail})")
-
-    # Classifications
-    classifications = by_type.get("classification", [])
-    if classifications:
-        label_counts = Counter(e.get("label", "unknown") for e in classifications)
-        detail = ", ".join(f"{n} {l}" for l, n in label_counts.most_common())
-        parts.append(f"- {len(classifications)} auto-classifications ({detail})")
-
-    # Extractions
-    extractions = by_type.get("extraction", [])
-    if extractions:
-        type_counts = Counter(e.get("value_type", "unknown") for e in extractions)
-        detail = ", ".join(f"{n} {t}" for t, n in type_counts.most_common())
-        parts.append(f"- {len(extractions)} value extractions ({detail})")
-
-    # LLM calls
-    llm_calls = by_type.get("llm_call", [])
-    if llm_calls:
-        total_ms = sum(e.get("latency_ms", 0) for e in llm_calls)
-        parts.append(f"- {len(llm_calls)} LLM calls ({total_ms}ms total)")
-
-    if not parts:
-        return ""
-
-    return "Spawn-time pipeline activity:\n" + "\n".join(parts)
+    return json.dumps(spawn_log, indent=2, default=str)
 
 
 def refine_hatch(
     file_dict: dict[str, str],
     egg: Egg,
-    config: NydusLLMConfig,
+    llm_config: LLMTierConfig,
     *,
     log: list[dict] | None = None,
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Phase 5: LLM refinement during hatching.
+    """Phase 4: LLM refinement during hatching.
 
     Operates on a file dict (filename -> content) and returns the
     updated dict.  No disk I/O — the pipeline handles writing.
 
-    Uses the complex tier to adapt or polish reconstructed files for the
+    Uses the configured LLM tier to adapt or polish reconstructed files for the
     target platform's conventions.
 
     If the LLM call fails, the original file dict is returned unchanged.
@@ -406,26 +416,34 @@ def refine_hatch(
     if not file_dict:
         return file_dict
 
-    source_type = egg.manifest.source_type.value
+    source_type = egg.manifest.agent_type
     target_type = _infer_target_type(file_dict)
-    same_platform = source_type == target_type
+    same_platform = target_type is not None and source_type == target_type
 
     file_listing = ""
     for path, content in file_dict.items():
         file_listing += f"--- {path} ---\n{content}\n\n"
 
+    target_spec = _load_agent_spec(target_type) if target_type else ""
+
     if same_platform:
-        system_prompt = _HATCH_POLISH_PROMPT.format(target_type=target_type)
+        system_prompt = _HATCH_POLISH_PROMPT.format(
+            target_type=target_type,
+            target_spec=target_spec,
+        )
     else:
+        source_spec = _load_agent_spec(source_type)
         system_prompt = _HATCH_SYSTEM_PROMPT.format(
             source_type=source_type,
             target_type=target_type,
+            source_spec=source_spec,
+            target_spec=target_spec,
         )
 
-    spawn_summary = _summarize_spawn_log(spawn_log or [])
+    serialized_log = _serialize_spawn_log(spawn_log or [])
     context_block = ""
-    if spawn_summary:
-        context_block = f"\n{spawn_summary}\n\n"
+    if serialized_log:
+        context_block = f"\nSpawn log:\n{serialized_log}\n\n"
 
     raw_block = ""
     if raw_artifacts:
@@ -442,7 +460,7 @@ def refine_hatch(
                 f"  - {s.placeholder}: {s.kind.value}, {s.name}"
                 + (f" — {s.description}" if s.description else "")
             )
-        secrets_block = "Secrets in this egg:\n" + "\n".join(secret_lines) + "\n\n"
+        secrets_block = "Redaction placeholders in this egg:\n" + "\n".join(secret_lines) + "\n\n"
 
     action_verb = "Polish" if same_platform else "Adapt"
 
@@ -464,7 +482,7 @@ def refine_hatch(
     ]
 
     llm_result = create_completion(
-        config.complex,
+        llm_config,
         messages=messages,
         response_model=AdaptedFilesOutput,
         log=log,
@@ -487,15 +505,15 @@ def refine_hatch(
     return result
 
 
-def _infer_target_type(file_dict: dict[str, str]) -> str:
+def _infer_target_type(file_dict: dict[str, str]) -> AgentType | None:
     """Best-effort infer the target platform from file names."""
     filenames = set(file_dict)
     if "agent_state.json" in filenames:
-        return "letta"
-    if "soul.md" in filenames:
-        return "openclaw"
+        return AgentType.LETTA
+    if "soul.md" in filenames or "SOUL.md" in filenames:
+        return AgentType.OPENCLAW
     if "persona.md" in filenames:
-        return "zeroclaw"
-    if "agents.md" in filenames:
-        return "openclaw"
-    return "unknown"
+        return AgentType.ZEROCLAW
+    if "agents.md" in filenames or "AGENTS.md" in filenames:
+        return AgentType.OPENCLAW
+    return None

@@ -1,4 +1,8 @@
-"""Nydus CLI — Typer application. Spec §17."""
+"""Nydus CLI — Typer application.
+
+Entry point for ``nydus`` commands: spawn, hatch, inspect, diff,
+registry operations, and key management.
+"""
 
 from __future__ import annotations
 
@@ -23,44 +27,30 @@ app = typer.Typer(
 
 @app.command()
 def spawn(
-    output: Annotated[
-        Path, typer.Option("-o", "--output", help="Output Egg path")
-    ] = Path("./agent.egg"),
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output Egg path")] = Path(
+        "./agent.egg"
+    ),
 ) -> None:
     """Create an Egg from source artifacts.
 
-    Reads a Nydusfile from the current directory. The Nydusfile must contain
-    at least one SOURCE directive declaring the input type and path.
+    Discovers (or auto-generates) a Nydusfile in the current directory, then
+    runs the spawning pipeline to produce an Egg.
     """
-    from pynydus.engine.nydusfile import parse_file
-    from pynydus.engine.packager import pack_with_raw
-    from pynydus.engine.pipeline import build as engine_spawn
-    from pynydus.pkg.config import load_config
+    from pynydus.config import load_config
+    from pynydus.engine.nydusfile import parse_file, resolve_nydusfile
+    from pynydus.engine.packager import save
+    from pynydus.engine.pipeline import spawn as engine_spawn
 
-    nydusfile_path = (Path.cwd() / "Nydusfile").resolve()
-    if not nydusfile_path.exists():
-        rprint(
-            "[red]Error:[/red] No Nydusfile found in current directory.\n"
-            "Create a Nydusfile with at least one SOURCE directive, e.g.:\n\n"
-            "  SOURCE openclaw ./my-agent/\n"
-            "  REDACT pii"
-        )
-        raise typer.Exit(1)
-
-    nydus_cfg = load_config(config_path)
-    nydusfile_dir = nydusfile_path.parent
+    nydus_cfg = load_config()
 
     try:
-        nydusfile_config = parse_file(str(nydusfile_path))
+        nydusfile_path = resolve_nydusfile(Path.cwd())
+        nydusfile_dir = nydusfile_path.parent
+        config = parse_file(str(nydusfile_path))
         egg, raw_artifacts, logs = engine_spawn(
-            nydusfile_dir,
-            nydusfile_config=nydusfile_config,
-            llm_config=nydus_cfg.llm,
+            config,
             nydusfile_dir=nydusfile_dir,
+            llm_config=nydus_cfg.llm,
         )
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
@@ -68,7 +58,7 @@ def spawn(
 
     private_key = None
     try:
-        from pynydus.pkg.signing import load_private_key
+        from pynydus.security.signing import load_private_key
 
         private_key = load_private_key()
     except Exception:
@@ -77,14 +67,14 @@ def spawn(
     nydusfile_text = nydusfile_path.read_text()
 
     spawn_log = logs.get("spawn_log", [])
-    egg_path = pack_with_raw(
-        egg,
-        output,
-        raw_artifacts,
-        spawn_log=spawn_log,
-        nydusfile_text=nydusfile_text,
-        private_key=private_key,
+    egg = egg.model_copy(
+        update={
+            "raw_artifacts": raw_artifacts,
+            "spawn_log": spawn_log,
+            "nydusfile": nydusfile_text,
+        }
     )
+    egg_path = save(egg, output, private_key=private_key)
     rprint(f"[green]Egg spawned:[/green] {egg_path}")
     rprint(
         f"  skills={len(egg.skills.skills)}  "
@@ -101,6 +91,8 @@ def spawn(
 
         counts = Counter(entry["type"] for entry in spawn_log)
         parts = []
+        if counts.get("secret_scan"):
+            parts.append(f"{counts['secret_scan']} secret detections")
         if counts.get("redaction"):
             parts.append(f"{counts['redaction']} redactions")
         if counts.get("classification"):
@@ -109,6 +101,11 @@ def spawn(
             parts.append(f"{counts['extraction']} value extractions")
         if parts:
             rprint(f"  [dim]logs: {', '.join(parts)}[/dim]")
+    if nydus_cfg.llm is None:
+        rprint(
+            "  [dim]LLM refinement disabled "
+            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -119,30 +116,28 @@ def spawn(
 @app.command()
 def hatch(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
-    target: Annotated[
-        str, typer.Option("--target", help="Target runtime")
-    ] = ...,  # type: ignore[assignment]
-    output: Annotated[
-        Path, typer.Option("-o", "--output", help="Output directory")
-    ] = Path("./agent/"),
+    target: Annotated[str, typer.Option("--target", help="Target runtime")] = ...,  # type: ignore[assignment]
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path(
+        "./agent/"
+    ),
     secrets: Annotated[
         Path | None,
         typer.Option("--secrets", help="Path to .env substitution file"),
     ] = None,
-    reconstruct: Annotated[
-        bool, typer.Option("--reconstruct", help="Force regeneration from modules")
+    passthrough: Annotated[
+        bool,
+        typer.Option(
+            "--passthrough", help="Replay redacted raw/ snapshot instead of rebuilding from modules"
+        ),
     ] = False,
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
 ) -> None:
     """Deploy an Egg into a target runtime."""
+    from pynydus.common.enums import AgentType, HatchMode
+    from pynydus.config import load_config
     from pynydus.engine.hatcher import hatch as engine_hatch
-    from pynydus.engine.packager import read_logs, read_raw_artifacts, unpack, verify_egg_archive
-    from pynydus.pkg.config import load_config
+    from pynydus.engine.packager import load, verify_egg_archive
 
-    nydus_cfg = load_config(config_path)
+    nydus_cfg = load_config()
 
     # Verify signature before hatching
     sig_status = verify_egg_archive(egg_path)
@@ -153,21 +148,15 @@ def hatch(
         rprint("[green]Signature verified.[/green]")
     # sig_status is None → unsigned, proceed silently
 
-    # Read spawn log and raw artifacts from the archive
-    spawn_log = read_logs(egg_path).get("spawn_log.json", [])
-    raw_artifacts = read_raw_artifacts(egg_path)
-
     try:
-        egg = unpack(egg_path)
+        egg = load(egg_path)
         result = engine_hatch(
             egg,
-            target=target,
+            target=AgentType(target),
             output_dir=output,
             secrets_path=secrets,
-            reconstruct=reconstruct,
+            mode=HatchMode.PASSTHROUGH if passthrough else HatchMode.REBUILD,
             llm_config=nydus_cfg.llm,
-            spawn_log=spawn_log or None,
-            raw_artifacts=raw_artifacts or None,
         )
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
@@ -178,6 +167,11 @@ def hatch(
         rprint(f"  {f}")
     for w in result.warnings:
         rprint(f"  [yellow]Warning:[/yellow] {w}")
+    if nydus_cfg.llm is None:
+        rprint(
+            "  [dim]LLM refinement disabled "
+            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -188,15 +182,15 @@ def hatch(
 @app.command()
 def env(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
-    output: Annotated[
-        Path, typer.Option("-o", "--output", help="Output .env path")
-    ] = Path("./hatch.env"),
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output .env path")] = Path(
+        "./hatch.env"
+    ),
 ) -> None:
     """Generate a template .env file from an egg's secrets."""
-    from pynydus.engine.packager import unpack
+    from pynydus.engine.packager import _unpack_egg_core
 
     try:
-        egg = unpack(egg_path)
+        egg = _unpack_egg_core(egg_path)
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -229,23 +223,23 @@ def inspect(
     show_secrets: Annotated[
         bool, typer.Option("--secrets", help="List all placeholders and occurrences")
     ] = False,
-    show_logs: Annotated[
-        bool, typer.Option("--logs", help="Show pipeline log summary")
-    ] = False,
+    show_logs: Annotated[bool, typer.Option("--logs", help="Show pipeline log summary")] = False,
 ) -> None:
     """Print Egg summary."""
-    from pynydus.engine.packager import unpack, verify_egg_archive
+    from pynydus.engine.packager import load, verify_egg_archive
 
     try:
-        egg = unpack(egg_path)
+        egg = load(egg_path)
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
     m = egg.manifest
     rprint(f"[bold]Egg:[/bold] {egg_path.name}")
-    rprint(f"  nydus {m.nydus_version} | egg spec {m.egg_version} | requires >= {m.min_nydus_version}")
-    rprint(f"  source: {m.source_type} ({m.source_connector})")
+    rprint(
+        f"  nydus {m.nydus_version} | egg spec {m.egg_version} | requires >= {m.min_nydus_version}"
+    )
+    rprint(f"  agent type: {m.agent_type}")
     if m.base_egg:
         rprint(f"  base egg: {m.base_egg}")
     rprint(f"  created: {m.created_at}")
@@ -258,8 +252,6 @@ def inspect(
         rprint("  signature: [red]INVALID — egg may be tampered[/red]")
     else:
         rprint("  signature: [dim]unsigned[/dim]")
-    if m.build_intent:
-        rprint(f"  intent: {m.build_intent}")
     rprint(
         f"  skills={len(egg.skills.skills)}  "
         f"memory={len(egg.memory.memory)}  "
@@ -285,12 +277,7 @@ def inspect(
         rprint(table)
 
     if show_logs:
-        from collections import Counter
-
-        from pynydus.engine.packager import read_logs
-
-        logs = read_logs(egg_path)
-        spawn_log = logs.get("spawn_log.json", [])
+        spawn_log = egg.spawn_log
 
         if not spawn_log:
             rprint("\n  [dim]No pipeline logs recorded.[/dim]")
@@ -330,7 +317,7 @@ def _log_type_detail(entry_type: str, entries: list[dict]) -> str:
         return ", ".join(f"{v} {k}" for k, v in pii_types.most_common())
 
     if entry_type == "classification":
-        labels = Counter(e.get("assigned_label", "?") for e in entries)
+        labels = Counter(e.get("label", "?") for e in entries)
         return ", ".join(f"{v} {k}" for k, v in labels.most_common())
 
     if entry_type == "extraction":
@@ -361,11 +348,11 @@ def validate(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
 ) -> None:
     """Check Egg integrity."""
-    from pynydus.engine.packager import unpack
+    from pynydus.engine.packager import _unpack_egg_core
     from pynydus.engine.validator import validate_egg
 
     try:
-        egg = unpack(egg_path)
+        egg = _unpack_egg_core(egg_path)
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -393,12 +380,13 @@ def diff(
     egg_b: Annotated[Path, typer.Argument(help="Second Egg")],
 ) -> None:
     """Compare two Eggs."""
+    from pynydus.common.enums import DiffChange
     from pynydus.engine.differ import diff_eggs
-    from pynydus.engine.packager import unpack
+    from pynydus.engine.packager import _unpack_egg_core
 
     try:
-        a = unpack(egg_a)
-        b = unpack(egg_b)
+        a = _unpack_egg_core(egg_a)
+        b = _unpack_egg_core(egg_b)
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -411,20 +399,25 @@ def diff(
         rprint("[green]Eggs are identical.[/green]")
         return
 
-    rprint(f"[yellow]{len(report.entries)} change(s) found.[/yellow]")
+    total = len(report.manifest_changes) + len(report.entries)
+    rprint(f"[yellow]{total} change(s) found.[/yellow]")
 
-    # Group entries by section
-    sections: dict[str, list] = {}
+    if report.manifest_changes:
+        rprint("\n  [bold]manifest[/bold]")
+        for mc in report.manifest_changes:
+            rprint(f"    [yellow]~[/yellow]  {mc.field}: {mc.old} → {mc.new}")
+
+    by_bucket: dict[str, list] = {}
     for entry in report.entries:
-        sections.setdefault(entry.section, []).append(entry)
+        by_bucket.setdefault(entry.bucket, []).append(entry)
 
-    for section, entries in sections.items():
-        rprint(f"\n  [bold]{section}[/bold]")
+    for bucket, entries in by_bucket.items():
+        rprint(f"\n  [bold]{bucket}[/bold]")
         for e in entries:
             id_str = f" {e.id}" if e.id else ""
-            if e.change == "added":
+            if e.change == DiffChange.ADDED:
                 rprint(f"    [green]+[/green]{id_str}  {e.new}")
-            elif e.change == "removed":
+            elif e.change == DiffChange.REMOVED:
                 rprint(f"    [red]-[/red]{id_str}  {e.old}")
             else:
                 rprint(f"    [yellow]~[/yellow]{id_str}  {e.field}: {e.old} → {e.new}")
@@ -460,13 +453,13 @@ def keygen(
     ] = None,
 ) -> None:
     """Generate an Ed25519 keypair for egg signing."""
-    from pynydus.pkg.signing import generate_keypair
+    from pynydus.security.signing import generate_keypair
 
     priv_path, pub_path = generate_keypair(key_dir)
-    rprint(f"[green]Keypair generated:[/green]")
+    rprint("[green]Keypair generated:[/green]")
     rprint(f"  private: {priv_path}")
     rprint(f"  public:  {pub_path}")
-    rprint(f"  [dim]Private key permissions set to 600 (owner-only).[/dim]")
+    rprint("  [dim]Private key permissions set to 600 (owner-only).[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -477,33 +470,23 @@ def keygen(
 @app.command()
 def push(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
-    name: Annotated[
-        str, typer.Option("--name", help="Registry name (user/egg-name)")
-    ] = ...,  # type: ignore[assignment]
-    version: Annotated[
-        str, typer.Option("--version", help="Version string (e.g. 0.1.0)")
-    ] = ...,  # type: ignore[assignment]
-    author: Annotated[
-        str | None, typer.Option("--author", help="Author name")
-    ] = None,
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
+    name: Annotated[str, typer.Option("--name", help="Registry name (user/egg-name)")] = ...,  # type: ignore[assignment]
+    version: Annotated[str, typer.Option("--version", help="Version string (e.g. 0.1.0)")] = ...,  # type: ignore[assignment]
+    author: Annotated[str | None, typer.Option("--author", help="Author name")] = None,
 ) -> None:
     """Publish an Egg to the Nest registry."""
+    from pynydus.config import load_config
     from pynydus.remote.registry import NestClient
-    from pynydus.pkg.config import load_config
 
     if not egg_path.exists():
         rprint(f"[red]Error:[/red] File not found: {egg_path}")
         raise typer.Exit(1)
 
-    nydus_cfg = load_config(config_path)
+    nydus_cfg = load_config()
     if nydus_cfg.registry is None:
         rprint(
             "[red]Error:[/red] Registry not configured. "
-            "Add a 'registry' section to config.json with at least 'url'."
+            "Set NYDUS_REGISTRY_URL (and optionally NYDUS_REGISTRY_AUTHOR)."
         )
         raise typer.Exit(1)
 
@@ -526,26 +509,20 @@ def push(
 @app.command()
 def pull(
     name: Annotated[str, typer.Argument(help="Registry name (user/egg-name)")],
-    version: Annotated[
-        str, typer.Option("--version", help="Version to pull")
-    ] = ...,  # type: ignore[assignment]
-    output: Annotated[
-        Path, typer.Option("-o", "--output", help="Output path")
-    ] = Path("pulled.egg"),
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
+    version: Annotated[str, typer.Option("--version", help="Version to pull")] = ...,  # type: ignore[assignment]
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output path")] = Path(
+        "pulled.egg"
+    ),
 ) -> None:
     """Download an Egg from the Nest registry."""
+    from pynydus.config import load_config
     from pynydus.remote.registry import NestClient
-    from pynydus.pkg.config import load_config
 
-    nydus_cfg = load_config(config_path)
+    nydus_cfg = load_config()
     if nydus_cfg.registry is None:
         rprint(
             "[red]Error:[/red] Registry not configured. "
-            "Add a 'registry' section to config.json with at least 'url'."
+            "Set NYDUS_REGISTRY_URL (and optionally NYDUS_REGISTRY_AUTHOR)."
         )
         raise typer.Exit(1)
 
@@ -575,20 +552,16 @@ def register(
         str,
         typer.Option("--password", "-p", prompt=True, hide_input=True, help="Password"),
     ] = ...,  # type: ignore[assignment]
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
 ) -> None:
     """Register a new account on the Nest registry."""
+    from pynydus.config import load_config
     from pynydus.remote.registry import NestClient
-    from pynydus.pkg.config import load_config
 
-    nydus_cfg = load_config(config_path)
+    nydus_cfg = load_config()
     if nydus_cfg.registry is None:
         rprint(
             "[red]Error:[/red] Registry not configured. "
-            "Add a 'registry' section to config.json with at least 'url'."
+            "Set NYDUS_REGISTRY_URL (and optionally NYDUS_REGISTRY_AUTHOR)."
         )
         raise typer.Exit(1)
 
@@ -610,20 +583,16 @@ def login(
         str,
         typer.Option("--password", "-p", prompt=True, hide_input=True, help="Password"),
     ] = ...,  # type: ignore[assignment]
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
 ) -> None:
     """Log in to the Nest registry and store credentials."""
+    from pynydus.config import load_config
     from pynydus.remote.registry import NestClient
-    from pynydus.pkg.config import load_config
 
-    nydus_cfg = load_config(config_path)
+    nydus_cfg = load_config()
     if nydus_cfg.registry is None:
         rprint(
             "[red]Error:[/red] Registry not configured. "
-            "Add a 'registry' section to config.json with at least 'url'."
+            "Set NYDUS_REGISTRY_URL (and optionally NYDUS_REGISTRY_AUTHOR)."
         )
         raise typer.Exit(1)
 
@@ -639,21 +608,16 @@ def login(
 
 
 @app.command()
-def logout(
-    config_path: Annotated[
-        Path | None,
-        typer.Option("-c", "--config", help="Path to config file (default: ./config.json)"),
-    ] = None,
-) -> None:
+def logout() -> None:
     """Log out from the Nest registry (remove stored credentials)."""
+    from pynydus.config import load_config
     from pynydus.remote.registry import NestClient
-    from pynydus.pkg.config import load_config
 
-    nydus_cfg = load_config(config_path)
+    nydus_cfg = load_config()
     if nydus_cfg.registry is None:
         rprint(
             "[red]Error:[/red] Registry not configured. "
-            "Add a 'registry' section to config.json with at least 'url'."
+            "Set NYDUS_REGISTRY_URL (and optionally NYDUS_REGISTRY_AUTHOR)."
         )
         raise typer.Exit(1)
 

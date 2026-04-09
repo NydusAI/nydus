@@ -1,15 +1,19 @@
-"""8-phase spawning pipeline.
+"""Spawning pipeline.
 
-Symmetric boundaries — secrets cross at the file level:
+Resolves Nydusfile directives, loads sources, runs gitleaks and Presidio on file
+text, invokes the platform spawner, optionally runs LLM refinement, then
+builds manifest and ``Egg`` records.
 
-1. Parse         — Resolve FROM, SOURCEs, base egg
-2. Read          — Read all source files into dict[str, str]
-3. Credential scan — Replace credential values with {{SECRET_NNN}}
-4. PII redact    — Replace PII with {{PII_NNN}} via Presidio
-5. Parse         — spawner.parse(redacted_files) -> ParseResult
-6. Build records — RawSkill/RawMemory -> SkillRecord/MemoryRecord
-7. LLM Refine    — Deduplicate memory, clean skills (on redacted text)
-8. Filter + Package — Bucket filter, label overrides, Manifest + Egg
+Pipeline steps:
+    1. Resolve base egg (FROM directive)
+    2. Read source files
+    3. Redaction (file filtering, secret scan, PII redaction)
+    4. Parse sources via spawner connector
+    5. Build structured records (skills, memory, secrets)
+    6. Merge with base egg (FROM + SOURCE)
+    7. LLM refinement (optional)
+    8. Post-processing (custom labels, memory exclusions)
+    9. Package egg
 """
 
 from __future__ import annotations
@@ -21,32 +25,37 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pynydus
-from pynydus.api.errors import ConnectorError
+from pynydus.api.errors import ConnectorError, GitleaksNotFoundError, NydusfileError
 from pynydus.api.raw_types import ParseResult
 from pynydus.api.schemas import (
-    Bucket,
     Egg,
     EggPartial,
-    InjectionMode,
     Manifest,
     McpServerConfig,
-    MemoryLabel,
     MemoryModule,
     MemoryRecord,
     RedactionPolicy,
-    RedactMode,
-    SecretKind,
     SecretRecord,
     SecretsModule,
     SkillRecord,
     SkillsModule,
     SourceEntry,
-    SourceType,
 )
-from pynydus.engine.nydusfile import NydusfileConfig, SourceDirective
+from pynydus.common.enums import (
+    AgentType,
+    Bucket,
+    InjectionMode,
+    MemoryLabel,
+    SecretKind,
+)
+from pynydus.engine.nydusfile import (
+    MergeOp,
+    NydusfileConfig,
+    SourceDirective,
+)
 
 if TYPE_CHECKING:
-    from pynydus.pkg.llm import NydusLLMConfig
+    from pynydus.llm import LLMTierConfig
 
 logger = logging.getLogger(__name__)
 
@@ -58,25 +67,48 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PipelineContext:
-    """Mutable context passed through each pipeline phase."""
+    """Mutable context passed through each pipeline phase.
 
-    source_path: Path
-    source_type: SourceType | None = None
-    nydusfile_config: NydusfileConfig | None = None
-    nydusfile_dir: Path | None = None
-    redact_mode: RedactMode = RedactMode.PII
-    llm_config: NydusLLMConfig | None = None
+    All Nydusfile fields are front-loaded here at the start of the pipeline.
+    No phase should reach back into NydusfileConfig.
+    """
+
+    nydusfile_dir: Path
+
+    # From Nydusfile (front-loaded)
+    sources: list[SourceDirective] = field(default_factory=list)
+    base_egg: str | None = None
+    merge_ops: list[MergeOp] = field(default_factory=list)
+    redact: bool = True
+    excluded_memory_labels: list[MemoryLabel] = field(default_factory=list)
+    custom_labels: dict[str, str] = field(default_factory=dict)
+    source_remove_globs: list[str] = field(default_factory=list)
+
+    # Resolved at pipeline start
+    agent_type: AgentType | None = None
+
+    # Runtime
+    llm_config: LLMTierConfig | None = None
     spawn_log: list[dict] = field(default_factory=list)
 
 
-def _resolve_source_entry_path(path_str: str, nydusfile_dir: Path | None) -> Path:
-    """Resolve a path from a Nydusfile SOURCE (or similar) entry."""
-    expanded = Path(path_str).expanduser()
-    if expanded.is_absolute():
-        return expanded.resolve()
-    if nydusfile_dir is not None:
-        return (nydusfile_dir / path_str).resolve()
-    return Path(path_str)
+def _build_context(
+    config: NydusfileConfig,
+    nydusfile_dir: Path,
+    llm_config: LLMTierConfig | None = None,
+) -> PipelineContext:
+    """Consume a NydusfileConfig into a PipelineContext."""
+    return PipelineContext(
+        nydusfile_dir=nydusfile_dir,
+        sources=config.sources,
+        base_egg=config.base_egg,
+        merge_ops=config.merge_ops,
+        redact=config.redact,
+        excluded_memory_labels=config.excluded_memory_labels,
+        custom_labels=config.custom_labels,
+        source_remove_globs=config.source_remove_globs,
+        llm_config=llm_config,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -84,105 +116,164 @@ def _resolve_source_entry_path(path_str: str, nydusfile_dir: Path | None) -> Pat
 # ---------------------------------------------------------------------------
 
 
-def build(
-    source_path: str | Path,
+def spawn(
+    config: NydusfileConfig,
     *,
-    source_type: str | None = None,
-    nydusfile_config: NydusfileConfig | None = None,
-    redact_mode: RedactMode | None = None,
-    llm_config: NydusLLMConfig | None = None,
-    nydusfile_dir: Path | None = None,
+    nydusfile_dir: Path,
+    llm_config: LLMTierConfig | None = None,
 ) -> tuple[Egg, dict[str, str], dict[str, list[dict]]]:
-    """Run the full 8-phase spawning pipeline.
+    """Run the spawning pipeline.
 
-    Secrets cross the boundary at the file level:
-    - Phase 3-4 (secrets OUT): real values -> {{SECRET_NNN}} / {{PII_NNN}}
-    - Spawner only sees redacted content
-    - LLM only sees redacted content
+    This is the single entry point for spawn: it enforces prerequisites such as
+    ``ensure_gitleaks_if_needed`` before any file reads or redaction.
 
-    Returns
-    -------
-    tuple[Egg, dict[str, str], dict[str, list[dict]]]
-        ``(egg, raw_artifacts, logs)`` — the built Egg, a dict of redacted
-        source file contents, and a dict of pipeline log entries.
+    Returns ``(egg, raw_artifacts, logs)`` — the spawned Egg, redacted source
+    file contents, and pipeline log entries.
     """
-    source_path = Path(source_path)
-    config = nydusfile_config
+    nydusfile_dir = Path(nydusfile_dir).resolve()
+    ensure_gitleaks_if_needed(config)
+    if len(config.sources) > 1:
+        raise NydusfileError(
+            "Only one SOURCE directive is allowed. Combine inputs under one directory "
+            "or use separate Nydusfiles."
+        )
+    ctx = _build_context(config, nydusfile_dir, llm_config)
 
-    nydusfile_dir_path = Path(nydusfile_dir).resolve() if nydusfile_dir is not None else None
-
-    ctx = PipelineContext(
-        source_path=source_path,
-        nydusfile_config=config,
-        nydusfile_dir=nydusfile_dir_path,
-        redact_mode=redact_mode or (config.redact if config else RedactMode.PII),
-        llm_config=llm_config,
+    ctx.spawn_log.append(
+        {
+            "type": "pipeline_start",
+            "source_platform": ctx.sources[0].agent_type if ctx.sources else None,
+            "base_egg": ctx.base_egg,
+            "redact": ctx.redact,
+            "sources": [s.path for s in ctx.sources],
+        }
     )
 
-    # --- Phase 1: Parse Nydusfile ---
-    resolved_source, base_partial = _phase1_parse(ctx, source_type)
-    ctx.source_type = resolved_source
+    # Step 1: Resolve base egg (FROM directive)
+    base_partial, base_agent_type = _resolve_base_egg(ctx)
+    ctx.agent_type = base_agent_type or AgentType(ctx.sources[0].agent_type)
 
-    if base_partial is not None:
-        # Base-egg inheritance: already has typed records, skip extraction
+    if base_partial is not None and not ctx.sources:
+        # FROM-only (no SOURCE): return the merged base egg directly.
         skills_module = base_partial.skills
         memory_module = base_partial.memory
         secrets_module = base_partial.secrets
 
-        effective_buckets = config.effective_buckets if config else set(Bucket)
-        skills_module, memory_module, secrets_module = _apply_bucket_filter(
-            skills_module, memory_module, secrets_module, effective_buckets
+        if ctx.custom_labels:
+            _apply_custom_labels(memory_module, ctx.custom_labels, spawn_log=ctx.spawn_log)
+        if ctx.excluded_memory_labels:
+            memory_module = _drop_memory_records_with_excluded_labels(
+                memory_module, ctx.excluded_memory_labels, spawn_log=ctx.spawn_log
+            )
+        egg = _package_egg(
+            ctx,
+            skills_module,
+            memory_module,
+            secrets_module,
+            base_partial.source_metadata,
         )
-        if config and config.custom_labels:
-            _apply_custom_labels(memory_module, config.custom_labels)
-        egg = _phase8_package(
-            ctx, resolved_source, skills_module, memory_module, secrets_module,
-            base_partial.source_metadata, effective_buckets,
-        )
-        if config and config.secret_policy != "default":
-            _apply_secret_policy(egg, config.secret_policy)
         logs = {"spawn_log": ctx.spawn_log}
         return egg, base_partial.raw_artifacts, logs
 
-    # --- Phase 2: Read source files ---
-    spawner = _get_spawner(resolved_source)
-    files = _phase2_read_files(ctx, spawner)
+    # Step 2: Read source files
+    groups = _read_source_files(ctx)
 
-    # Filter out excluded files/patterns
-    if config and config.exclude_files:
-        files = _filter_files_by_patterns(files, config.exclude_files)
+    # Step 3: Redaction (file filtering, secret scan, PII)
+    secret_counter = 1
+    pii_counter = 1
+    all_secret_records: list[SecretRecord] = []
+    all_pii_records: list[SecretRecord] = []
 
-    # --- Phase 3: Secrets OUT boundary, part 1 (credential scan) ---
-    # Credential scanning always runs unless redaction is fully disabled.
-    cred_secrets: list[SecretRecord] = []
-    if ctx.redact_mode != RedactMode.NONE:
-        files, cred_secrets = _phase3_scan_credentials(files, ctx)
+    for i, (src_type, group_files) in enumerate(groups):
+        if ctx.source_remove_globs:
+            before_keys = set(group_files.keys())
+            group_files = _filter_files_by_patterns(group_files, ctx.source_remove_globs)
+            removed = sorted(before_keys - set(group_files.keys()))
+            if removed:
+                ctx.spawn_log.append(
+                    {
+                        "type": "files_removed",
+                        "patterns": ctx.source_remove_globs,
+                        "removed": removed,
+                        "remaining": len(group_files),
+                    }
+                )
 
-    # --- Phase 4: Secrets OUT boundary, part 2 (PII redact) ---
-    pii_secrets: list[SecretRecord] = []
-    if ctx.redact_mode in (RedactMode.PII, RedactMode.ALL):
-        files, pii_secrets = _phase4_redact_pii(files, ctx)
+        if ctx.redact:
+            group_files, credential_records, secret_counter = _scan_secrets_gitleaks(
+                group_files,
+                ctx,
+                start_index=secret_counter,
+            )
+            all_secret_records.extend(credential_records)
 
-    # After this point, `files` is fully "raw" — no real secrets or PII remain.
+            group_files, pii_records, pii_counter = _redact_pii(
+                group_files,
+                ctx,
+                start_index=pii_counter,
+            )
+            all_pii_records.extend(pii_records)
 
-    # --- Phase 5: Parse (spawner clean room) ---
-    parse_result = _phase5_parse(spawner, files, ctx)
+        groups[i] = (src_type, group_files)
 
-    # --- Phase 6: Build records ---
-    skills_module = _build_skills_module_from_parse(parse_result, resolved_source.value, ctx)
-    memory_module = _build_memory_module_from_parse(parse_result, resolved_source.value, ctx)
+    # Step 4: Parse sources via spawner connector
+    parse_result = _parse_sources(groups, ctx)
 
-    # Merge credential + PII secrets
-    all_secrets = cred_secrets + pii_secrets
+    # Step 5: Build structured records
+    skills_module = _build_skills_module_from_parse(parse_result, ctx.agent_type)
+    memory_module = _build_memory_module_from_parse(parse_result, ctx.agent_type)
+
+    ctx.spawn_log.append(
+        {
+            "type": "records_built",
+            "skills": [
+                {"id": s.id, "name": s.name, "source_file": s.metadata.get("source_file")}
+                for s in skills_module.skills
+            ],
+            "memory": [
+                {
+                    "id": m.id,
+                    "label": m.label.value,
+                    "source_store": m.source_store,
+                    "text_length": len(m.text),
+                }
+                for m in memory_module.memory
+            ],
+        }
+    )
+
+    all_redaction_records = all_secret_records + all_pii_records
     seen_placeholders: set[str] = set()
     deduped_secrets: list[SecretRecord] = []
-    for s in all_secrets:
+    for s in all_redaction_records:
         if s.placeholder not in seen_placeholders:
             deduped_secrets.append(s)
             seen_placeholders.add(s.placeholder)
     secrets_module = SecretsModule(secrets=deduped_secrets)
 
-    # --- Phase 7: LLM Refine (on redacted content) ---
+    # Step 6: Merge with base egg (FROM + SOURCE)
+    if base_partial is not None:
+        skills_before = len(skills_module.skills)
+        memory_before = len(memory_module.memory)
+        secrets_before = len(secrets_module.secrets)
+
+        skills_module = _merge_skills(base_partial.skills, skills_module)
+        memory_module = _merge_memory(base_partial.memory, memory_module)
+        secrets_module = _merge_secrets(base_partial.secrets, secrets_module)
+
+        ctx.spawn_log.append(
+            {
+                "type": "base_merge",
+                "skills_before": skills_before,
+                "skills_after": len(skills_module.skills),
+                "memory_before": memory_before,
+                "memory_after": len(memory_module.memory),
+                "secrets_before": secrets_before,
+                "secrets_after": len(secrets_module.secrets),
+            }
+        )
+
+    # Step 7: LLM refinement (optional)
     if ctx.llm_config is not None:
         from pynydus.engine.refinement import refine_memory, refine_skills
 
@@ -191,122 +282,178 @@ def build(
         if memory_module.memory:
             memory_module = refine_memory(memory_module, ctx.llm_config, spawn_log=ctx.spawn_log)
 
-    # --- Phase 8: Filter + Package ---
-    effective_buckets = config.effective_buckets if config else set(Bucket)
-    skills_module, memory_module, secrets_module = _apply_bucket_filter(
-        skills_module, memory_module, secrets_module, effective_buckets
+    # Step 8: Post-processing (custom labels, memory exclusions)
+    if ctx.custom_labels:
+        _apply_custom_labels(memory_module, ctx.custom_labels, spawn_log=ctx.spawn_log)
+    if ctx.excluded_memory_labels:
+        memory_module = _drop_memory_records_with_excluded_labels(
+            memory_module, ctx.excluded_memory_labels, spawn_log=ctx.spawn_log
+        )
+
+    # Step 9: Package egg
+    source_metadata = parse_result.source_metadata or {"source_dir": str(ctx.nydusfile_dir)}
+
+    egg = _package_egg(
+        ctx,
+        skills_module,
+        memory_module,
+        secrets_module,
+        source_metadata,
     )
 
-    if config and config.custom_labels:
-        _apply_custom_labels(memory_module, config.custom_labels)
-
-    source_metadata = parse_result.source_metadata or {"source_dir": str(ctx.source_path)}
-
-    egg = _phase8_package(
-        ctx, resolved_source, skills_module, memory_module, secrets_module,
-        source_metadata, effective_buckets,
-    )
-
-    if config and config.secret_policy != "default":
-        _apply_secret_policy(egg, config.secret_policy)
+    raw_artifacts: dict[str, str] = {}
+    for _src_type, group_files in groups:
+        raw_artifacts.update(group_files)
 
     logs = {"spawn_log": ctx.spawn_log}
-    return egg, files, logs
+    return egg, raw_artifacts, logs
 
 
 # ---------------------------------------------------------------------------
-# Phase 1: Parse
+# Step 1 helpers: Base egg resolution
 # ---------------------------------------------------------------------------
 
 
-def _phase1_parse(
-    ctx: PipelineContext, explicit_source: str | None
-) -> tuple[SourceType, EggPartial | None]:
-    """Resolve source type and base egg."""
-    config = ctx.nydusfile_config
-    base_partial = None
+def ensure_gitleaks_if_needed(config: NydusfileConfig) -> None:
+    """Raise if gitleaks is required but not installed.
 
-    if config and config.base_egg:
-        from pynydus.engine.merger import load_base_egg, merge
+    Secret scanning is required when ``REDACT`` is true (the default) and
+    at least one ``SOURCE`` directive is present.  FROM-only spawns and
+    ``REDACT false`` pipelines skip file-level scanning entirely.
+    """
+    if not config.redact or not config.sources:
+        return
 
-        base_ref = config.base_egg
-        if _is_registry_ref(base_ref):
-            base_ref = _pull_registry_egg(base_ref)
-        else:
-            p = Path(base_ref).expanduser()
-            if not p.is_absolute() and ctx.nydusfile_dir is not None:
-                base_ref = str((ctx.nydusfile_dir / base_ref).resolve())
+    from pynydus.security.gitleaks import find_gitleaks
 
-        base = load_base_egg(base_ref)
-        resolved_source = base.manifest.source_type
-        base_partial = merge(base, config.merge_ops)
-        base_partial.source_metadata["base_egg"] = config.base_egg
+    if find_gitleaks() is None:
+        raise GitleaksNotFoundError(
+            "Secret scanning requires gitleaks but the binary was not found. "
+            "Install gitleaks (https://github.com/gitleaks/gitleaks#installing) "
+            "or set $NYDUS_GITLEAKS_PATH. To skip scanning, use REDACT false."
+        )
+
+
+def _resolve_base_egg(
+    ctx: PipelineContext,
+) -> tuple[EggPartial | None, AgentType | None]:
+    """If FROM is present, load and merge the base egg.
+
+    Returns ``(partial, agent_type)`` — partial is the merged base egg,
+    agent_type is the base egg's manifest agent type.
+    """
+    if not ctx.base_egg:
+        return None, None
+
+    from pynydus.engine.merger import load_base_egg, merge
+
+    base_ref = ctx.base_egg
+    if _is_registry_ref(base_ref):
+        base_ref = _pull_registry_egg(base_ref)
     else:
-        resolved_source = _resolve_source_type(ctx.source_path, explicit_source, config)
+        p = Path(base_ref).expanduser()
+        if not p.is_absolute():
+            base_ref = str((ctx.nydusfile_dir / base_ref).resolve())
 
-    return resolved_source, base_partial
+    base = load_base_egg(base_ref)
+    partial = merge(base, ctx.merge_ops, base_dir=ctx.nydusfile_dir)
+    partial.source_metadata["base_egg"] = ctx.base_egg
 
-
-def _resolve_source_type(
-    source_path: Path, explicit: str | None, config: NydusfileConfig | None
-) -> SourceType:
-    """Determine source type from explicit flag, config, or auto-detection."""
-    if explicit:
-        try:
-            return SourceType(explicit)
-        except ValueError:
-            raise ConnectorError(f"Unknown source type: {explicit}")
-    if config:
-        return config.source
-    return _auto_detect(source_path)
-
-
-def _auto_detect(source_path: Path) -> SourceType:
-    """Auto-detect the source type from the input path."""
-    from pynydus.agents.openclaw.spawner import OpenClawSpawner
-
-    if OpenClawSpawner().detect(source_path):
-        return SourceType.OPENCLAW
-
-    from pynydus.agents.letta.spawner import LettaSpawner
-
-    if LettaSpawner().detect(source_path):
-        return SourceType.LETTA
-
-    raise ConnectorError(
-        f"Cannot auto-detect source type for: {source_path}. "
-        f"Add a SOURCE directive to your Nydusfile."
+    ctx.spawn_log.append(
+        {
+            "type": "base_egg_loaded",
+            "ref": ctx.base_egg,
+            "agent_type": base.manifest.agent_type,
+            "skills": len(partial.skills.skills),
+            "memory": len(partial.memory.memory),
+            "secrets": len(partial.secrets.secrets),
+        }
     )
 
+    return partial, base.manifest.agent_type
+
+
+def _is_registry_ref(ref: str) -> bool:
+    """Check if a base egg reference looks like a registry ref (name:version)."""
+    if ref.endswith(".egg"):
+        return False
+    if ref.startswith(("./", "/", "\\")):
+        return False
+    return ":" in ref
+
+
+def _pull_registry_egg(ref: str) -> str:
+    """Pull a registry egg to a temp file and return its path."""
+    import tempfile
+
+    from pynydus.api.errors import ConfigError, RegistryError
+    from pynydus.config import load_config
+    from pynydus.remote.registry import NestClient
+
+    parts = ref.rsplit(":", 1)
+    if len(parts) != 2 or not parts[1]:
+        raise RegistryError(f"Invalid registry reference: {ref}. Expected name:version.")
+
+    name, version = parts
+
+    config = load_config()
+    if config.registry is None:
+        raise ConfigError(
+            f"Cannot resolve registry reference '{ref}': set NYDUS_REGISTRY_URL "
+            "(and optionally NYDUS_REGISTRY_AUTHOR)."
+        )
+
+    client = NestClient(config.registry.url, author=config.registry.author)
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="nydus_base_"))
+    egg_path = tmp_dir / f"{name.replace('/', '_')}_{version}.egg"
+
+    return str(client.pull(name, version=version, output_path=egg_path))
+
 
 # ---------------------------------------------------------------------------
-# Phase 2: Read source files
+# Step 2 helpers: Source file reading
 # ---------------------------------------------------------------------------
 
 
-def _phase2_read_files(ctx: PipelineContext, spawner: object) -> dict[str, str]:
-    """Read all source files into a dict using spawner's FILE_PATTERNS."""
-    config = ctx.nydusfile_config
-    files: dict[str, str] = {}
+def _resolve_source_entry_path(path_str: str, nydusfile_dir: Path) -> Path:
+    """Resolve a path from a Nydusfile SOURCE (or similar) entry."""
+    expanded = Path(path_str).expanduser()
+    if expanded.is_absolute():
+        return expanded.resolve()
+    return (nydusfile_dir / path_str).resolve()
 
-    source_paths: list[tuple[Path, str | None]] = []
 
-    if config and config.sources:
-        for src in config.sources:
-            resolved = _resolve_source_entry_path(src.path, ctx.nydusfile_dir)
-            source_paths.append((resolved, src.source_type))
-    else:
-        source_paths.append((ctx.source_path, None))
+def _read_source_files(
+    ctx: PipelineContext,
+) -> list[tuple[AgentType, dict[str, str]]]:
+    """Read source files into independent per-group dicts.
 
-    for src_path, src_type in source_paths:
-        if src_type:
-            s = _get_spawner(SourceType(src_type))
-        else:
-            s = spawner
-        patterns = getattr(s, "FILE_PATTERNS", ["*.md", "*.json", "*.yaml", "*.yml", "*.txt"])
-        files.update(_read_files_from_path(src_path, patterns))
+    Returns at most one ``(agent_type, files)`` tuple (at most one SOURCE).
+    Each group's dict has bare filename keys and is independent — no merging
+    is performed here.
+    """
+    groups: list[tuple[AgentType, dict[str, str]]] = []
 
-    return files
+    for src in ctx.sources:
+        resolved = _resolve_source_entry_path(src.path, ctx.nydusfile_dir)
+        at = AgentType(src.agent_type)
+        spawner = _get_spawner(at)
+        patterns = getattr(spawner, "FILE_PATTERNS", ["*.md", "*.json", "*.yaml", "*.yml", "*.txt"])
+        src_files = _read_files_from_path(resolved, patterns)
+        groups.append((at, src_files))
+
+        ctx.spawn_log.append(
+            {
+                "type": "source_files_read",
+                "agent_type": at.value,
+                "path": str(resolved),
+                "files": sorted(src_files.keys()),
+                "count": len(src_files),
+            }
+        )
+
+    return groups
 
 
 def _read_files_from_path(root: Path, patterns: list[str]) -> dict[str, str]:
@@ -337,49 +484,96 @@ def _read_files_from_path(root: Path, patterns: list[str]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Phase 3: Credential scan (secrets OUT, part 1)
+# Step 3 helpers: Redaction (file filtering, secret scan, PII)
 # ---------------------------------------------------------------------------
 
 
-def _phase3_scan_credentials(
-    files: dict[str, str], ctx: PipelineContext
-) -> tuple[dict[str, str], list[SecretRecord]]:
-    """Replace credential values with {{SECRET_NNN}} placeholders."""
-    from pynydus.pkg.credential_scanner import scan_credentials
+def _filter_files_by_patterns(files: dict[str, str], patterns: list[str]) -> dict[str, str]:
+    """Remove files whose keys match any exclude glob."""
+    import fnmatch
 
-    redacted, secrets = scan_credentials(files, start_index=1)
+    def _matches(name: str) -> bool:
+        return any(fnmatch.fnmatch(name, pat) for pat in patterns)
 
-    for s in secrets:
-        ctx.spawn_log.append({
-            "type": "credential_scan",
-            "source": s.occurrences[0] if s.occurrences else "unknown",
-            "placeholder": s.placeholder,
-            "name": s.name,
-        })
-
-    return redacted, secrets
+    return {k: v for k, v in files.items() if not _matches(k)}
 
 
-# ---------------------------------------------------------------------------
-# Phase 4: PII redact (secrets OUT, part 2)
-# ---------------------------------------------------------------------------
+def _scan_secrets_gitleaks(
+    files: dict[str, str],
+    ctx: PipelineContext,
+    *,
+    start_index: int = 1,
+) -> tuple[dict[str, str], list[SecretRecord], int]:
+    """Replace secrets with ``{{SECRET_NNN}}`` placeholders via gitleaks.
+
+    Writes scannable files to a temp directory, runs gitleaks, maps findings
+    back to in-memory dict keys.  Ignored (binary) files pass through
+    unchanged.
+
+    Returns ``(redacted_files, credential_records, next_index)``.
+    """
+    import tempfile
+
+    from pynydus.common.scan_paths import partition_files
+    from pynydus.security.gitleaks import apply_gitleaks_findings, run_gitleaks_scan
+
+    scannable, ignored = partition_files(files)
+
+    if not scannable:
+        return files, [], start_index
+
+    with tempfile.TemporaryDirectory(prefix="nydus_gl_") as tmp:
+        tmp_root = Path(tmp)
+        for key, content in scannable.items():
+            dest = tmp_root / key
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
+
+        findings = run_gitleaks_scan(tmp_root)
+        redacted, credential_records, next_idx = apply_gitleaks_findings(
+            scannable,
+            findings,
+            temp_root=tmp_root,
+            start_index=start_index,
+        )
+
+    for s in credential_records:
+        ctx.spawn_log.append(
+            {
+                "type": "secret_scan",
+                "tool": "gitleaks",
+                "source": s.occurrences[0] if s.occurrences else "unknown",
+                "placeholder": s.placeholder,
+                "name": s.name,
+            }
+        )
+
+    redacted.update(ignored)
+    return redacted, credential_records, next_idx
 
 
-def _phase4_redact_pii(
-    files: dict[str, str], ctx: PipelineContext
-) -> tuple[dict[str, str], list[SecretRecord]]:
-    """Replace PII with {{PII_NNN}} placeholders via Presidio."""
-    from pynydus.pkg.presidio import PIIRedactor
+def _redact_pii(
+    files: dict[str, str],
+    ctx: PipelineContext,
+    *,
+    start_index: int = 1,
+) -> tuple[dict[str, str], list[SecretRecord], int]:
+    """Replace PII with ``{{PII_NNN}}`` placeholders via Presidio.
 
-    redactor = PIIRedactor(start_index=1)
-    pii_secrets: list[SecretRecord] = []
+    Returns ``(redacted_files, pii_records, next_index)`` so callers can chain
+    the counter across multiple groups.
+    """
+    from pynydus.security.presidio import PIIRedactor
+
+    redactor = PIIRedactor(start_index=start_index)
+    pii_records: list[SecretRecord] = []
     redacted: dict[str, str] = {}
 
     for fname, content in files.items():
         result = redactor.redact(content)
         redacted[fname] = result.redacted_text
         for repl in result.replacements:
-            pii_secrets.append(
+            pii_records.append(
                 SecretRecord(
                     id=f"pii_{repl.placeholder.strip('{}').split('_')[1]}".lower(),
                     placeholder=repl.placeholder,
@@ -391,38 +585,101 @@ def _phase4_redact_pii(
                     description=f"Redacted {repl.pii_type}",
                 )
             )
-            ctx.spawn_log.append({
-                "type": "redaction",
-                "source": f"file:{fname}",
-                "pii_type": repl.pii_type,
-                "placeholder": repl.placeholder,
-            })
+            ctx.spawn_log.append(
+                {
+                    "type": "redaction",
+                    "source": f"file:{fname}",
+                    "pii_type": repl.pii_type,
+                    "placeholder": repl.placeholder,
+                }
+            )
 
-    return redacted, pii_secrets
+    return redacted, pii_records, redactor.counter
 
 
 # ---------------------------------------------------------------------------
-# Phase 5: Parse (spawner clean room)
+# Step 4 helpers: Spawner dispatch + parsing
 # ---------------------------------------------------------------------------
 
 
-def _phase5_parse(
-    spawner: object, files: dict[str, str], ctx: PipelineContext
+def _instantiate_spawner(module: str, class_name: str):  # noqa: ANN202
+    mod = __import__(module, fromlist=[class_name])
+    return getattr(mod, class_name)()
+
+
+def _get_spawner(agent_type: AgentType):  # noqa: ANN202
+    """Return the spawner connector for the given agent type."""
+    _SPAWNERS = {
+        AgentType.OPENCLAW: lambda: _instantiate_spawner(
+            "pynydus.agents.openclaw.spawner", "OpenClawSpawner"
+        ),
+        AgentType.LETTA: lambda: _instantiate_spawner(
+            "pynydus.agents.letta.spawner", "LettaSpawner"
+        ),
+        AgentType.ZEROCLAW: lambda: _instantiate_spawner(
+            "pynydus.agents.zeroclaw.spawner", "ZeroClawSpawner"
+        ),
+    }
+    factory = _SPAWNERS.get(agent_type)
+    if factory is None:
+        raise ConnectorError(f"No spawner available for: {agent_type}")
+    return factory()
+
+
+def _parse_sources(
+    source_groups: list[tuple[AgentType, dict[str, str]]],
+    ctx: PipelineContext,
 ) -> ParseResult:
-    """Call spawner.parse() on pre-redacted file contents."""
-    if hasattr(spawner, "parse"):
-        return spawner.parse(files)  # type: ignore[union-attr]
-    # Fallback for legacy spawners without parse()
-    raise ConnectorError(f"Spawner {type(spawner).__name__} does not implement parse()")
+    """Parse redacted files, dispatching each source group to its own spawner.
+
+    Each group's dict is already redacted — it is passed directly to the
+    spawner with bare filename keys.
+    """
+    combined = ParseResult()
+
+    for src_type, group_files in source_groups:
+        spawner = _get_spawner(src_type)
+        if not hasattr(spawner, "parse"):
+            raise ConnectorError(f"Spawner {type(spawner).__name__} does not implement parse()")
+        if not group_files:
+            continue
+        result: ParseResult = spawner.parse(group_files)
+        combined.skills.extend(result.skills)
+        combined.memory.extend(result.memory)
+        combined.mcp_configs.update(result.mcp_configs)
+        combined.source_metadata.update(result.source_metadata)
+
+        ctx.spawn_log.append(
+            {
+                "type": "spawner_parse",
+                "agent_type": src_type.value,
+                "skills": [
+                    {"name": s.name, "source_file": s.source_file}
+                    for s in result.skills
+                ],
+                "memory": [
+                    {
+                        "source_file": m.source_file,
+                        "label": m.label.value if m.label else None,
+                        "text_length": len(m.text),
+                    }
+                    for m in result.memory
+                ],
+                "source_metadata": dict(result.source_metadata),
+            }
+        )
+
+    return combined
 
 
 # ---------------------------------------------------------------------------
-# Phase 6: Build records
+# Step 5 helpers: Record building
 # ---------------------------------------------------------------------------
 
 
 def _build_skills_module_from_parse(
-    parse_result: ParseResult, source_type: str, ctx: PipelineContext
+    parse_result: ParseResult,
+    agent_type: AgentType,
 ) -> SkillsModule:
     """Convert ParseResult skills into SkillRecord objects."""
     skills: list[SkillRecord] = []
@@ -431,20 +688,19 @@ def _build_skills_module_from_parse(
             SkillRecord(
                 id=f"skill_{i:03d}",
                 name=rs.name,
-                source_type=source_type,
+                agent_type=agent_type,
                 content=rs.content,
                 metadata={"source_file": rs.source_file} if rs.source_file else {},
             )
         )
 
-    mcp_configs = {
-        name: McpServerConfig(**cfg) for name, cfg in parse_result.mcp_configs.items()
-    }
+    mcp_configs = {name: McpServerConfig(**cfg) for name, cfg in parse_result.mcp_configs.items()}
     return SkillsModule(skills=skills, mcp_configs=mcp_configs)
 
 
 def _build_memory_module_from_parse(
-    parse_result: ParseResult, source_type: str, ctx: PipelineContext
+    parse_result: ParseResult,
+    agent_type: AgentType,
 ) -> MemoryModule:
     """Convert ParseResult memory into MemoryRecord objects."""
     memory: list[MemoryRecord] = []
@@ -455,7 +711,7 @@ def _build_memory_module_from_parse(
                 id=f"mem_{i:03d}",
                 text=rm.text,
                 label=label,
-                source_framework=source_type,
+                agent_type=agent_type,
                 source_store=rm.source_file or "unknown",
                 skill_ref=rm.skill_ref,
                 timestamp=rm.timestamp,
@@ -466,159 +722,53 @@ def _build_memory_module_from_parse(
 
 
 # ---------------------------------------------------------------------------
-# Exclude-files filter
+# Step 6 helpers: Base egg merging (FROM + SOURCE)
 # ---------------------------------------------------------------------------
 
 
-def _filter_files_by_patterns(files: dict[str, str], patterns: list[str]) -> dict[str, str]:
-    """Remove files whose names match any exclude glob."""
-    import fnmatch
-
-    def _matches(name: str) -> bool:
-        return any(fnmatch.fnmatch(name, pat) for pat in patterns)
-
-    return {k: v for k, v in files.items() if not _matches(k)}
-
-
-# ---------------------------------------------------------------------------
-# Phase 8: Filtering, packaging
-# ---------------------------------------------------------------------------
+def _merge_skills(base: SkillsModule, extracted: SkillsModule) -> SkillsModule:
+    """Combine base egg skills with freshly extracted skills, re-numbering IDs."""
+    combined = list(base.skills) + list(extracted.skills)
+    for i, skill in enumerate(combined, start=1):
+        skill.id = f"skill_{i:03d}"
+    mcp = dict(base.mcp_configs)
+    mcp.update(extracted.mcp_configs)
+    return SkillsModule(skills=combined, mcp_configs=mcp)
 
 
-def _apply_bucket_filter(
-    skills: SkillsModule,
-    memory: MemoryModule,
-    secrets: SecretsModule,
-    buckets: set[Bucket],
-) -> tuple[SkillsModule, MemoryModule, SecretsModule]:
-    """Remove excluded buckets."""
-    if Bucket.SKILLS not in buckets:
-        skills = SkillsModule()
-    if Bucket.MEMORY not in buckets:
-        memory = MemoryModule()
-    if Bucket.SECRETS not in buckets:
-        secrets = SecretsModule()
-    return skills, memory, secrets
+def _merge_memory(base: MemoryModule, extracted: MemoryModule) -> MemoryModule:
+    """Combine base egg memory with freshly extracted memory, re-numbering IDs."""
+    combined = list(base.memory) + list(extracted.memory)
+    for i, rec in enumerate(combined, start=1):
+        rec.id = f"mem_{i:03d}"
+    return MemoryModule(memory=combined)
 
 
-def _phase8_package(
-    ctx: PipelineContext,
-    source_type: SourceType,
-    skills: SkillsModule,
-    memory: MemoryModule,
-    secrets: SecretsModule,
-    source_metadata: dict[str, str],
-    effective_buckets: set[Bucket],
-) -> Egg:
-    """Construct the final Egg with manifest."""
-    config = ctx.nydusfile_config
-    included_modules = [b.value for b in effective_buckets]
-
-    sources: list[SourceEntry] = []
-    if config and config.sources:
-        for src in config.sources:
-            sources.append(SourceEntry(source_type=src.source_type, source_path=src.path))
-
-    manifest = Manifest(
-        nydus_version=pynydus.__version__,
-        min_nydus_version=pynydus.__version__,
-        egg_version=pynydus.EGG_SPEC_VERSION,
-        created_at=datetime.now(UTC),
-        source_type=source_type,
-        included_modules=included_modules,
-        redaction_policy=RedactionPolicy(
-            pii_redacted=ctx.redact_mode in (RedactMode.PII, RedactMode.ALL),
-            secrets_placeholder_only=True,
-        ),
-        base_egg=config.base_egg if config else None,
-        build_intent=config.purpose if config else None,
-        source_metadata=source_metadata,
-        sources=sources,
-    )
-
-    return Egg(
-        manifest=manifest,
-        skills=skills,
-        memory=memory,
-        secrets=secrets,
-    )
+def _merge_secrets(
+    base: SecretsModule,
+    extracted: SecretsModule,
+) -> SecretsModule:
+    """Combine base egg secrets with extracted secrets, deduplicating by name."""
+    seen_names: set[str] = set()
+    combined: list[SecretRecord] = []
+    for s in list(base.secrets) + list(extracted.secrets):
+        if s.name not in seen_names:
+            combined.append(s)
+            seen_names.add(s.name)
+    for i, s in enumerate(combined, start=1):
+        s.id = f"secret_{i:03d}"
+    return SecretsModule(secrets=combined)
 
 
 # ---------------------------------------------------------------------------
-# Spawner dispatch
-# ---------------------------------------------------------------------------
-
-
-def _get_spawner(source_type: SourceType):  # noqa: ANN202
-    """Return the spawner connector for the given source type."""
-    if source_type == SourceType.OPENCLAW:
-        from pynydus.agents.openclaw.spawner import OpenClawSpawner
-
-        return OpenClawSpawner()
-
-    if source_type == SourceType.LETTA:
-        from pynydus.agents.letta.spawner import LettaSpawner
-
-        return LettaSpawner()
-
-    if source_type == SourceType.ZEROCLAW:
-        from pynydus.agents.zeroclaw.spawner import ZeroClawSpawner
-
-        return ZeroClawSpawner()
-
-    raise ConnectorError(f"No spawner available for: {source_type}")
-
-
-# ---------------------------------------------------------------------------
-# Registry helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_registry_ref(ref: str) -> bool:
-    """Check if a base egg reference looks like a registry ref (name:version)."""
-    if ref.endswith(".egg"):
-        return False
-    if ref.startswith(("./", "/", "\\")):
-        return False
-    return ":" in ref
-
-
-def _pull_registry_egg(ref: str) -> str:
-    """Pull a registry egg to a temp file and return its path."""
-    import tempfile
-
-    from pynydus.api.errors import ConfigError, RegistryError
-    from pynydus.pkg.config import load_config
-    from pynydus.remote.registry import NestClient
-
-    parts = ref.rsplit(":", 1)
-    if len(parts) != 2 or not parts[1]:
-        raise RegistryError(f"Invalid registry reference: {ref}. Expected name:version.")
-
-    name, version = parts
-
-    config = load_config()
-    if config.registry is None:
-        raise ConfigError(
-            f"Cannot resolve registry reference '{ref}': "
-            "no 'registry' section in config.json."
-        )
-
-    client = NestClient(config.registry.url, author=config.registry.author)
-
-    tmp_dir = Path(tempfile.mkdtemp(prefix="nydus_base_"))
-    egg_path = tmp_dir / f"{name.replace('/', '_')}_{version}.egg"
-
-    return str(client.pull(name, version=version, output_path=egg_path))
-
-
-# ---------------------------------------------------------------------------
-# Nydusfile helpers
+# Step 8 helpers: Post-processing (custom labels, memory exclusions)
 # ---------------------------------------------------------------------------
 
 
 def _apply_custom_labels(
-    memory: MemoryModule, custom_labels: dict[str, str]
+    memory: MemoryModule,
+    custom_labels: dict[str, str],
+    spawn_log: list[dict] | None = None,
 ) -> None:
     """Override memory record labels based on source_store pattern matching."""
     import fnmatch
@@ -628,15 +778,108 @@ def _apply_custom_labels(
             continue
         for pattern, label_str in custom_labels.items():
             if fnmatch.fnmatch(rec.source_store, pattern):
-                try:
-                    rec.label = MemoryLabel(label_str)
-                except ValueError:
-                    logger.warning("Unknown label '%s' in LABEL directive, ignoring", label_str)
+                old_label = rec.label.value
+                rec.label = MemoryLabel(label_str)
+                if spawn_log is not None:
+                    spawn_log.append(
+                        {
+                            "type": "label_override",
+                            "record_id": rec.id,
+                            "source_store": rec.source_store,
+                            "pattern": pattern,
+                            "old_label": old_label,
+                            "new_label": label_str,
+                        }
+                    )
                 break
 
 
-def _apply_secret_policy(egg: Egg, policy: str) -> None:
-    """Override required_at_hatch on all secrets based on policy."""
-    required = policy == "all_required"
-    for secret in egg.secrets.secrets:
-        secret.required_at_hatch = required
+def _drop_memory_records_with_excluded_labels(
+    memory: MemoryModule,
+    excluded: list[MemoryLabel],
+    spawn_log: list[dict] | None = None,
+) -> MemoryModule:
+    """Remove memory records whose label is listed in ``excluded``."""
+    if not excluded:
+        return memory
+    excluded_set = set(excluded)
+    dropped = [r for r in memory.memory if r.label in excluded_set]
+    kept = [r for r in memory.memory if r.label not in excluded_set]
+
+    if spawn_log is not None and dropped:
+        spawn_log.append(
+            {
+                "type": "memory_excluded",
+                "excluded_labels": [l.value for l in excluded],
+                "dropped": [
+                    {"id": r.id, "label": r.label.value, "source_store": r.source_store}
+                    for r in dropped
+                ],
+                "kept": len(kept),
+            }
+        )
+
+    return MemoryModule(memory=kept)
+
+
+# ---------------------------------------------------------------------------
+# Step 9 helpers: Packaging
+# ---------------------------------------------------------------------------
+
+
+def _compute_min_version(ctx: PipelineContext) -> str:
+    """Determine the minimum Nydus version required to open this egg."""
+    if ctx.base_egg:
+        return "0.2.0"
+    return "0.1.0"
+
+
+def _package_egg(
+    ctx: PipelineContext,
+    skills: SkillsModule,
+    memory: MemoryModule,
+    secrets: SecretsModule,
+    source_metadata: dict[str, str],
+) -> Egg:
+    """Construct the final Egg with manifest."""
+    included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
+
+    sources: list[SourceEntry] = [
+        SourceEntry(agent_type=src.agent_type, source_path=src.path) for src in ctx.sources
+    ]
+
+    manifest = Manifest(
+        nydus_version=pynydus.__version__,
+        min_nydus_version=_compute_min_version(ctx),
+        egg_version=pynydus.EGG_SPEC_VERSION,
+        created_at=datetime.now(UTC),
+        agent_type=ctx.agent_type,
+        included_modules=included_modules,
+        redaction_policy=RedactionPolicy(
+            pii_redacted=ctx.redact,
+            secrets_placeholder_only=ctx.redact,
+        ),
+        base_egg=ctx.base_egg,
+        source_metadata=source_metadata,
+        sources=sources,
+    )
+
+    egg = Egg(
+        manifest=manifest,
+        skills=skills,
+        memory=memory,
+        secrets=secrets,
+    )
+
+    ctx.spawn_log.append(
+        {
+            "type": "egg_packaged",
+            "agent_type": ctx.agent_type.value if ctx.agent_type else None,
+            "skills": len(skills.skills),
+            "memory": len(memory.memory),
+            "secrets": len(secrets.secrets),
+            "source_metadata": dict(source_metadata),
+        }
+    )
+
+    return egg

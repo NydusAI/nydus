@@ -1,4 +1,0 @@
-SOURCE letta ./src
-REDACT none
-LABEL kind base_egg
-LABEL namespace nydus/letta

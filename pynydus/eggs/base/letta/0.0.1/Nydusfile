@@ -1,0 +1,4 @@
+SOURCE letta ./
+REDACT true
+LABEL agent_state.json#memory.persona persona
+LABEL agent_state.json#memory.human context
