@@ -1,7 +1,8 @@
 # Guides
 
-In-depth guides covering the Nydusfile DSL, security model, LLM refinement,
-the Nest registry, and environment configuration.
+How-to guides for the Nydusfile DSL, security model, LLM refinement,
+the Nest registry, environment configuration, extending PyNydus with new
+connectors, and troubleshooting.
 
 
 ```{toctree}
@@ -12,4 +13,6 @@ security
 llm-refinement
 nest-registry
 configuration
+adding-connectors
+troubleshooting
 ```

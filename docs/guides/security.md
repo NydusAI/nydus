@@ -42,6 +42,14 @@ Output files (real values restored)
 keys, tokens, and passwords, replacing each match with a `{{SECRET_NNN}}`
 placeholder. Each finding becomes a `SecretRecord` with kind `credential`.
 
+How the scan works:
+
+1. Scannable files (non-binary) are written to a temporary directory.
+2. Gitleaks runs against the temp dir using its built-in rule set.
+3. Findings are mapped back to the in-memory file dict.
+4. Each matched span is replaced with a unique `{{SECRET_NNN}}` token.
+5. Ignored (binary) files pass through unchanged.
+
 Gitleaks must be installed when spawning with `REDACT true` and `SOURCE`
 directives. See {doc}`/getting-started/install` for setup.
 
@@ -49,9 +57,53 @@ directives. See {doc}`/getting-started/install` for setup.
 ### Presidio (PII)
 
 [Presidio](https://microsoft.github.io/presidio/) scans the
-(already gitleaks-processed) files for PII (emails, phone numbers, person
-names, SSNs, etc.) and replaces each with a `{{PII_NNN}}` placeholder (kind
-`pii`). Uses the `en_core_web_lg` spaCy model with custom recognizers.
+(already gitleaks-processed) files for PII and replaces each match with a
+`{{PII_NNN}}` placeholder (kind `pii`).
+
+**NLP model:** `en_core_web_lg` (spaCy). Loaded once and cached as a singleton.
+
+**Confidence threshold:** 0.40. Detections below this score are discarded.
+
+**Built-in entity types detected:**
+
+| Entity type | Examples |
+|-------------|---------|
+| `PERSON` | Full names |
+| `EMAIL_ADDRESS` | email@example.com |
+| `PHONE_NUMBER` | +1-555-0123 |
+| `CREDIT_CARD` | 4111-1111-1111-1111 |
+| `IBAN_CODE` | GB82 WEST 1234 5698 7654 32 |
+| `IP_ADDRESS` | 192.168.1.1 |
+| `LOCATION` | "123 Main St, Springfield" |
+| `MEDICAL_LICENSE` | Medical license numbers |
+
+**Custom recognizers** (added by PyNydus):
+
+| Entity type | Pattern | Context keywords |
+|-------------|---------|-----------------|
+| `US_SSN` | `\d{3}-\d{2}-\d{4}`, `\d{3} \d{2} \d{4}` | ssn, social security |
+| `US_PASSPORT` | `[A-Z]\d{8}` | passport, travel document |
+| `US_DRIVERS_LICENSE` | `[A-Z]\d{6,14}` | driver, license, dl |
+
+**Suppressed entity types** (too noisy): `URL`, `DATE_TIME`, `NRP`.
+
+**Overlap resolution:** When multiple detections overlap the same text span,
+the highest-scoring, longest match wins. Others are discarded.
+
+**Deduplication:** Identical PII values across files reuse the same placeholder.
+"John Smith" in three files all become the same `{{PII_001}}`.
+
+
+### File classification
+
+Binary files are skipped during scanning. Classification is by extension:
+
+**Ignored (binary):** `png`, `jpg`, `jpeg`, `gif`, `webp`, `ico`, `svg`,
+`pdf`, `zip`, `egg`, `gz`, `tar`, `bz2`, `xz`, `7z`, `woff`, `woff2`,
+`ttf`, `otf`, `eot`, `mp3`, `mp4`, `wav`, `ogg`, `webm`, `avi`, `bin`,
+`exe`, `dll`, `so`, `dylib`, `pyc`, `pyo`, `class`.
+
+**Scannable (everything else):** Markdown, JSON, YAML, plain text, Python, etc.
 
 
 ### REDACT directive
@@ -64,17 +116,26 @@ names, SSNs, etc.) and replaces each with a `{{PII_NNN}}` placeholder (kind
 
 When `REDACT false` is set, a warning is logged. Use only for testing.
 
-
-Binary files (`png`, `jpg`, `pdf`, `zip`, `exe`, etc.) are passed through
-unchanged. All other files (Markdown, JSON, YAML, plain text) are scanned.
-
 ## Placeholder linking
 
 
-Every redacted value gets a unique placeholder token (e.g. `{{SECRET_001}}`).
-The Egg tracks which files contain each placeholder and whether the real
-value must be provided at hatch time. This lets `nydus env` generate a
-template `.env` listing exactly which secrets an Egg needs.
+Every redacted value gets a unique placeholder token. The Egg's `SecretsModule`
+stores a `SecretRecord` for each:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Stable ID (`secret_001`, `pii_001`) |
+| `placeholder` | The token (`{{SECRET_001}}`, `{{PII_001}}`) |
+| `kind` | `credential` (gitleaks) or `pii` (Presidio) |
+| `pii_type` | Entity type for PII records (e.g., `PERSON`, `EMAIL_ADDRESS`) |
+| `name` | Human-readable name (e.g., `AWS_ACCESS_KEY_ID`, `PII_PERSON`) |
+| `required_at_hatch` | If `true`, hatch fails without this secret in `.env` |
+| `injection_mode` | How the value is substituted (`env` = `.env` file) |
+| `description` | Optional description of what was redacted |
+| `occurrences` | List of source files containing this placeholder |
+
+`nydus env agent.egg` generates a template `.env` by reading all
+`SecretRecord` entries and listing their names as keys to fill in.
 
 ## Injection boundary (secrets IN)
 
@@ -87,6 +148,24 @@ disk**:
 3. **Secret injection**: `{{SECRET_NNN}}` / `{{PII_NNN}}` replaced with real
    values from `.env`
 4. Files written to disk
+
+The `.env` file maps `SecretRecord.name` -> real value. If a record has
+`required_at_hatch=True` and its name is missing, hatch fails with an error
+listing the missing secrets.
+
+## Spawn log security
+
+
+The spawn log captures detailed structured events from every pipeline step.
+It is stored in the Egg and forwarded to the hatch LLM. No real secret values
+or PII appear in the log:
+
+- **Secret entries** log only the placeholder name and gitleaks rule ID.
+  The actual secret value is never recorded.
+- **PII entries** log only the entity type (e.g., `PERSON`) and the
+  placeholder. The actual PII value is never recorded.
+- **Text content** is logged as character lengths, never as raw text.
+  For example, a memory record logs `text_length: 245`, not the text itself.
 
 ## Egg signing (Ed25519)
 

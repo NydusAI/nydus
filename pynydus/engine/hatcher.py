@@ -4,13 +4,13 @@ Two modes:
   rebuild     (default) — render from structured egg modules via connector
   passthrough           — replay redacted raw/ snapshot verbatim
 
-Pipeline phases:
-  1. Version check — verify min_nydus_version compatibility
-  2. Build file dict — connector.render() (rebuild) or raw snapshot (passthrough)
-  3. LLM polish — adapt/polish on placeholder'd content (no real secrets)
-  4. Secrets IN — substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
-  5. Write to disk
-  6. Hatch log — write hatch_log.json
+Pipeline steps:
+    1. Version check — verify min_nydus_version compatibility
+    2. Build file dict — connector.render() (rebuild) or raw snapshot (passthrough)
+    3. LLM polish — adapt/polish on placeholder'd content (no real secrets)
+    4. Secrets IN — substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
+    5. Write to disk
+    6. Hatch log — write hatch_log.json
 
 The LLM never sees real secrets — only placeholder tokens. Real values are
 injected as the last transformation before writing to disk.
@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 from pynydus.api.errors import ConnectorError, HatchError
 from pynydus.api.schemas import Egg, HatchResult
-from pynydus.common.enums import AgentType, Bucket, HatchMode
+from pynydus.common.enums import AgentType, HatchMode
 
 if TYPE_CHECKING:
     from pynydus.llm import LLMTierConfig
@@ -44,7 +44,7 @@ def hatch(
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
 ) -> HatchResult:
-    """Run the full hatching pipeline (see module docstring for phases).
+    """Run the full hatching pipeline (see module docstring for steps).
 
     Args:
         egg: Egg to hatch (typically from :func:`~pynydus.engine.packager.load`).
@@ -71,12 +71,12 @@ def hatch(
     if raw_artifacts is None and egg.raw_artifacts:
         raw_artifacts = egg.raw_artifacts
 
-    # --- Phase 1: Version check ---
+    # --- Step 1: Version check ---
     _check_version_compat(egg)
 
     source_at = egg.manifest.agent_type
 
-    # --- Phase 2–3: Build file dict from modules or raw snapshot ---
+    # --- Step 2: Build file dict from modules or raw snapshot ---
     if mode == HatchMode.PASSTHROUGH:
         if source_at != target:
             raise HatchError(
@@ -108,13 +108,13 @@ def hatch(
                 "phase": "render",
                 "source": source_at,
                 "target": target,
-                Bucket.SKILL: len(egg.skills.skills),
-                Bucket.MEMORY: len(egg.memory.memory),
+                "skills": len(egg.skills.skills),
+                "memory": len(egg.memory.memory),
                 "files": len(file_dict),
             }
         )
 
-    # --- Phase 4: LLM polish (on placeholder'd content — no real secrets) ---
+    # --- Step 3: LLM polish (on placeholder'd content, no real secrets) ---
     if llm_config is not None and file_dict:
         from pynydus.engine.refinement import refine_hatch
 
@@ -127,7 +127,7 @@ def hatch(
             raw_artifacts=raw_artifacts,
         )
 
-    # --- Phase 5: Secrets IN boundary (last transform before disk) ---
+    # --- Step 4: Secrets IN boundary (last transform before disk) ---
     placeholder_map: dict[str, str] = {}
     if secrets_path:
         env_vars = _parse_env_file(secrets_path)
@@ -142,7 +142,7 @@ def hatch(
                     }
                 )
 
-    # --- Phase 6: Write to disk ---
+    # --- Step 5: Write to disk ---
     files_created = _write_files(file_dict, output)
 
     result = HatchResult(
@@ -153,14 +153,14 @@ def hatch(
         hatch_log=hatch_log,
     )
 
-    # --- Phase 7: Hatch log ---
+    # --- Step 6: Hatch log ---
     _write_hatch_log(result)
 
     return result
 
 
 # ---------------------------------------------------------------------------
-# Phase 5: Secret substitution (secrets IN boundary)
+# Step 4 helpers: Secret substitution (secrets IN boundary)
 # ---------------------------------------------------------------------------
 
 
@@ -177,7 +177,7 @@ def _substitute_secrets(files: dict[str, str], placeholder_map: dict[str, str]) 
 
 
 # ---------------------------------------------------------------------------
-# Phase 6: Write files to disk
+# Step 5 helpers: Write files to disk
 # ---------------------------------------------------------------------------
 
 
@@ -194,7 +194,7 @@ def _write_files(files: dict[str, str], output_dir: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Hatch log
+# Step 6 helpers: Hatch log
 # ---------------------------------------------------------------------------
 
 

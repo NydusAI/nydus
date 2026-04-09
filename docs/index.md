@@ -40,6 +40,6 @@ result = ny.hatch(egg, target="letta", output_dir=Path("out"))
 
 getting-started/index
 guides/index
-reference/index
-advanced/index
+design/index
+api/index
 ```

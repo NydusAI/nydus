@@ -4,7 +4,7 @@ Connectors bridge framework-specific file layouts and the portable Egg format.
 Each supported platform has a **spawner** (reads source files into an Egg) and
 a **hatcher** (writes Egg contents back to files).
 
-For how to implement a new connector, see {doc}`/advanced/adding-connectors`.
+For how to implement a new connector, see {doc}`/guides/adding-connectors`.
 
 ## Pipeline overview
 
@@ -39,11 +39,11 @@ to files in each platform.
 
 | Egg content | Spawner reads | Hatcher writes |
 |-------------|---------------|----------------|
-| Memory[**persona**] | `SOUL.md`, `soul.md`, `IDENTITY.md` | `soul.md` |
-| Memory[**flow**] | `AGENTS.md`, `agents.md`, `BOOT.md`, `HEARTBEAT.md` | `agents.md` |
-| Memory[**context**] | `USER.md`, `user.md`, `TOOLS.md` | `user.md` |
-| Memory[**state**] | `knowledge.md`, `MEMORY.md`, `memory/*.md` | `knowledge.md` |
-| Skills | `skill.md`, `skills.md`, `skills/*.md` | `skill.md` (each skill as a `# Name` section) |
+| Memory[**persona**] | `SOUL.md`, `soul.md`, `IDENTITY.md` | `SOUL.md` + `IDENTITY.md` (split by source) |
+| Memory[**flow**] | `AGENTS.md`, `agents.md`, `BOOT.md`, `HEARTBEAT.md` | `AGENTS.md` |
+| Memory[**context**] | `USER.md`, `user.md`, `TOOLS.md` | `USER.md` + `TOOLS.md` (split by source) |
+| Memory[**state**] | `knowledge.md`, `MEMORY.md`, `memory/*.md` | `MEMORY.md` + `memory/YYYY-MM-DD.md` (dated records) |
+| Skills | `skill.md`, `skills.md`, `skills/*.md` | `skills/<name>.md` (one file per skill, kebab-case) |
 | Secrets | `config.yaml`, `config.yml`, `config.json` | `config.json` |
 | MCP | `mcp.json`, `mcp/*.json` | `mcp/<name>.json` |
 
@@ -58,36 +58,44 @@ Letta stores memory in named blocks inside `agent_state.json`. The block names
 differ from Egg labels: Letta calls context memory `human` and flow memory
 `system`.
 
+The hatcher produces a single `agent.af` file conforming to the AgentFileSchema,
+importable by any Letta server via `letta.agents.import_file()`.
+
 
 | Egg content | Spawner reads | Hatcher writes |
 |-------------|---------------|----------------|
-| Memory[**persona**] | `agent_state.json` > `memory.persona` | `agent_state.json` > `memory.persona.value` |
-| Memory[**flow**] | `agent_state.json` > `system`, `system_prompt.md/.txt` | `agent_state.json` > `system` + `system_prompt.md` |
-| Memory[**context**] | `agent_state.json` > `memory.human` | `agent_state.json` > `memory.human.value` |
+| Memory[**persona**] | `agent_state.json` > `memory.persona`, `*.af` > `blocks[label="persona"]` | `agent.af` > `blocks[label="persona"]` |
+| Memory[**flow**] | `agent_state.json` > `system`, `system_prompt.md/.txt`, `*.af` > `agents[0].system` | `agent.af` > `agents[0].system` |
+| Memory[**context**] | `agent_state.json` > `memory.human`, `*.af` > `blocks[label="human"]` | `agent.af` > `blocks[label="human"]` |
 | Memory[**state**] | `archival_memory.json`, `archival/*.{txt,md,json}` | `archival_memory.json` |
-| Skills | `agent_state.json` > `tools[]`, `tools/*.py` | `tools/<name>.py` + `agent_state.json` > `tools[]` |
-| Secrets | config files | `.letta/config.json` |
+| Skills | `agent_state.json` > `tools[]`, `tools/*.py`, `*.af` > `tools[]` | `agent.af` > `tools[]` |
+| Secrets | config files | `agent.af` > `agents[0].tool_exec_environment_variables` |
+| MCP | `mcp.json`, `mcp/*.json` | `agent.af` > `mcp_servers[]` |
 
 
 `agent.db` (SQLite) is also supported as a source. It contains skills, memory,
 and secrets in database tables.
 
 
-**Detection:** `.letta/` directory, `agent_state.json`, `agent.db`, or
-`tools/*.py`.
+**Detection:** `.letta/` directory, `agent_state.json`, `agent.db`, `*.af`,
+or `tools/*.py`.
 
 ## ZeroClaw
 
 
 | Egg content | Spawner reads | Hatcher writes |
 |-------------|---------------|----------------|
-| Memory[**persona**] | `SOUL.md`, `persona.md`, `IDENTITY.md`, `identity.json` | `persona.md` |
+| Memory[**persona**] | `SOUL.md`, `persona.md`, `IDENTITY.md`, `identity.json` | `persona.md` + `identity.md` (split by source) |
 | Memory[**flow**] | `AGENTS.md`, `instructions.md`, `system_prompt.md`, `HEARTBEAT.md` | `agents.md` |
-| Memory[**context**] | `USER.md`, `user.md`, `context.md`, `TOOLS.md` | `user.md` |
-| Memory[**state**] | `MEMORY.md`, `knowledge.md`, `memory/*.md`, `memory.db` | `knowledge.md` |
+| Memory[**context**] | `USER.md`, `user.md`, `context.md`, `TOOLS.md` | `user.md` + `tools.md` (split by source) |
+| Memory[**state**] | `MEMORY.md`, `knowledge.md`, `memory/*.md`, `memory.db` | `knowledge.md` + `memory/YYYY-MM-DD.md` (dated records) |
 | Skills | `tools/*.py`, `tools.json` | `tools/<name>.py` |
-| Secrets | `config.json`, `config.yaml`, `config.toml` | `config.json` |
+| Secrets | `config.json`, `config.yaml`, `config.toml` | `config.toml` |
 | MCP | `mcp.json`, `mcp/*.json` | `mcp/<name>.json` |
+
+
+The hatcher also produces a `.zeroclaw/.keep` marker directory so the workspace
+is recognized by the ZeroClaw spawner on re-ingestion.
 
 
 **Detection:** `.zeroclaw/` marker, persona file, `tools/`/`tools.json`,

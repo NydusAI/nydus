@@ -1,12 +1,12 @@
 """Letta spawner connector. Spec §10.3.
 
 Parses a Letta agent export directory, database dump, or .af AgentFile:
+- *.af (AgentFile) -> Letta's official portable agent format (AgentFileSchema)
 - agent_state.json  -> memory blocks (persona, human, system) + agent config
 - archival_memory.json / archival/ -> long-term archival memory records
 - tools/ -> Python tool definitions -> skill records
 - system_prompt.md -> system prompt -> memory record
 - .letta/ marker directory (optional)
-- *.af (AgentFile) -> Letta's official portable agent format
 
 Also supports reading from a Letta SQLite database file (agent.db) as a
 fallback when structured JSON exports are not available.
@@ -40,8 +40,16 @@ _LETTA_MARKER = ".letta"
 
 _BLOCK_LABEL_MAP: dict[str, MemoryLabel] = {
     "persona": MemoryLabel.PERSONA,
+    "soul": MemoryLabel.PERSONA,
     "human": MemoryLabel.CONTEXT,
+    "about_user": MemoryLabel.CONTEXT,
+    "preferences": MemoryLabel.CONTEXT,
     "system": MemoryLabel.FLOW,
+    "custom_instructions": MemoryLabel.FLOW,
+    "scratchpad": MemoryLabel.STATE,
+    "active_hypotheses": MemoryLabel.STATE,
+    "conversation_patterns": MemoryLabel.STATE,
+    "learned_corrections": MemoryLabel.STATE,
 }
 
 FILE_PATTERNS = [
@@ -177,11 +185,15 @@ class LettaSpawner:
         return ParseResult(skills=skills, memory=memories)
 
     # ------------------------------------------------------------------
-    # AgentFile (.af) parsing
+    # AgentFile (.af) parsing — real AgentFileSchema
     # ------------------------------------------------------------------
 
     def _try_parse_agent_file(self, files: dict[str, str]) -> ParseResult | None:
-        """Try to parse a .af AgentFile from the files dict. Returns None if no .af found."""
+        """Try to parse a .af AgentFile from the files dict.
+
+        Handles the real AgentFileSchema with top-level ``agents``,
+        ``blocks``, ``tools``, ``mcp_servers``, ``skills``, ``metadata``.
+        """
         af_content = None
         af_name = None
         for key, content in files.items():
@@ -200,30 +212,57 @@ class LettaSpawner:
         if not isinstance(data, dict):
             return None
 
+        # Must have top-level "agents" key per AgentFileSchema
+        if "agents" not in data or not isinstance(data["agents"], list):
+            return None
+
+        agents = data["agents"]
+        if not agents:
+            return None
+        agent = agents[0]
+        if not isinstance(agent, dict):
+            return None
+
         skills: list[RawSkill] = []
         memories: list[RawMemory] = []
         mcp_configs: dict[str, dict] = {}
         source_metadata: dict[str, str] = {}
 
-        self._parse_af_memory_blocks(data, memories, af_name)
-        self._parse_af_system_prompt(data, memories, af_name)
+        # --- blocks (top-level list) ---
+        self._parse_af_blocks(data, memories, af_name)
+
+        # --- system prompt (from agent) ---
+        self._parse_af_system_prompt(agent, memories, af_name)
+
+        # --- tools (top-level list, filtered by tool_type) ---
         self._parse_af_tools(data, skills, af_name)
-        self._parse_af_tool_rules(data, memories, af_name)
-        self._parse_af_messages(data, memories, af_name)
-        self._parse_af_env_vars(data, memories, af_name)
+
+        # --- skills (top-level list, SkillSchema with files/source_url) ---
+        self._parse_af_skills(data, skills, af_name)
+
+        # --- tool_rules (from agent) ---
+        self._parse_af_tool_rules(agent, memories, af_name)
+
+        # --- messages (from agent, content is list of objects) ---
+        self._parse_af_messages(agent, memories, af_name)
+
+        # --- env vars (from agent) ---
+        self._parse_af_env_vars(agent, memories, af_name)
+
+        # --- mcp_servers (top-level) ---
         self._parse_af_mcp_servers(data, mcp_configs)
-        self._parse_af_model_config(data, source_metadata)
 
-        dir_skills = self._parse_skills(files)
-        seen_names = {s.name for s in skills}
-        for s in dir_skills:
-            if s.name not in seen_names:
-                skills.append(s)
+        # --- model config (from agent) ---
+        self._parse_af_model_config(agent, source_metadata)
 
-        dir_mcp = self._parse_mcp_configs(files)
-        for k, v in dir_mcp.items():
-            if k not in mcp_configs:
-                mcp_configs[k] = v
+        # --- agent-level metadata ---
+        for key in ("description", "agent_type"):
+            val = agent.get(key)
+            if val and isinstance(val, str):
+                source_metadata[f"letta.{key}"] = val
+        tags = agent.get("tags")
+        if isinstance(tags, list):
+            source_metadata["letta.tags"] = ",".join(str(t) for t in tags)
 
         return ParseResult(
             skills=skills,
@@ -233,39 +272,35 @@ class LettaSpawner:
         )
 
     @staticmethod
-    def _parse_af_memory_blocks(data: dict, memories: list[RawMemory], af_name: str | None) -> None:
-        blocks = data.get("memory", data.get("blocks", {}))
-        if isinstance(blocks, dict):
-            for block_name, block_value in blocks.items():
-                text = _extract_block_text(block_value)
-                if text:
-                    label = _BLOCK_LABEL_MAP.get(block_name, MemoryLabel.CONTEXT)
-                    memories.append(
-                        RawMemory(
-                            text=text,
-                            source_file=f"{af_name}#memory.{block_name}",
-                            label=label,
-                        )
-                    )
-        elif isinstance(blocks, list):
-            for block in blocks:
-                if not isinstance(block, dict):
-                    continue
-                name = block.get("label", block.get("name", ""))
-                text = _extract_block_text(block)
-                if text:
-                    label = _BLOCK_LABEL_MAP.get(name, MemoryLabel.CONTEXT)
-                    memories.append(
-                        RawMemory(
-                            text=text,
-                            source_file=f"{af_name}#blocks.{name}",
-                            label=label,
-                        )
-                    )
+    def _parse_af_blocks(
+        data: dict, memories: list[RawMemory], af_name: str | None
+    ) -> None:
+        """Parse top-level ``blocks`` list from AgentFileSchema."""
+        blocks = data.get("blocks", [])
+        if not isinstance(blocks, list):
+            return
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            label_key = block.get("label", "")
+            text = _extract_block_text(block)
+            if not text:
+                continue
+            label = _BLOCK_LABEL_MAP.get(label_key, MemoryLabel.CONTEXT)
+            memories.append(
+                RawMemory(
+                    text=text,
+                    source_file=f"{af_name}#blocks.{label_key}",
+                    label=label,
+                )
+            )
 
     @staticmethod
-    def _parse_af_system_prompt(data: dict, memories: list[RawMemory], af_name: str | None) -> None:
-        system = data.get("system", data.get("system_prompt", ""))
+    def _parse_af_system_prompt(
+        agent: dict, memories: list[RawMemory], af_name: str | None
+    ) -> None:
+        """Parse ``system`` field from the agent dict."""
+        system = agent.get("system", "")
         if system and isinstance(system, str):
             memories.append(
                 RawMemory(
@@ -276,7 +311,15 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_tools(data: dict, skills: list[RawSkill], af_name: str | None) -> None:
+    def _parse_af_tools(
+        data: dict, skills: list[RawSkill], af_name: str | None
+    ) -> None:
+        """Parse top-level ``tools`` list.
+
+        Only custom tools (with ``source_code``) become skill records.
+        Built-in Letta tools (letta_core, letta_builtin, letta_sleeptime_core)
+        have ``source_code: null`` and are skipped.
+        """
         tools = data.get("tools", [])
         if not isinstance(tools, list):
             return
@@ -284,20 +327,57 @@ class LettaSpawner:
             if not isinstance(tool_def, dict):
                 continue
             tname = tool_def.get("name", "")
-            tsource = tool_def.get("source_code", "")
-            if tsource:
-                skills.append(
-                    RawSkill(
-                        name=_python_module_display_name(tname) if tname else "unnamed_tool",
-                        content=tsource,
-                        source_file=af_name or ".af",
-                    )
+            tsource = tool_def.get("source_code")
+            if not tsource or not isinstance(tsource, str):
+                continue
+            skills.append(
+                RawSkill(
+                    name=_python_module_display_name(tname) if tname else "unnamed_tool",
+                    content=tsource,
+                    source_file=af_name or ".af",
                 )
+            )
 
     @staticmethod
-    def _parse_af_tool_rules(data: dict, memories: list[RawMemory], af_name: str | None) -> None:
-        """Parse tool_rules as FLOW memory (behavioral sequencing constraints)."""
-        rules = data.get("tool_rules", [])
+    def _parse_af_skills(
+        data: dict, skills: list[RawSkill], af_name: str | None
+    ) -> None:
+        """Parse top-level ``skills`` list (SkillSchema objects).
+
+        Each skill has ``name``, optional ``files`` dict (must include
+        ``SKILL.md``), and optional ``source_url``.
+        """
+        af_skills = data.get("skills", [])
+        if not isinstance(af_skills, list):
+            return
+        seen = {s.name for s in skills}
+        for skill_def in af_skills:
+            if not isinstance(skill_def, dict):
+                continue
+            name = skill_def.get("name", "")
+            if not name or name in seen:
+                continue
+            skill_files = skill_def.get("files") or {}
+            content = skill_files.get("SKILL.md", "")
+            if not content:
+                source_url = skill_def.get("source_url", "")
+                content = f"[skill reference: {source_url}]" if source_url else ""
+            if content:
+                skills.append(
+                    RawSkill(
+                        name=name,
+                        content=content.strip(),
+                        source_file=f"{af_name}#skills.{name}",
+                    )
+                )
+                seen.add(name)
+
+    @staticmethod
+    def _parse_af_tool_rules(
+        agent: dict, memories: list[RawMemory], af_name: str | None
+    ) -> None:
+        """Parse ``tool_rules`` from the agent dict as FLOW memory."""
+        rules = agent.get("tool_rules", [])
         if not isinstance(rules, list) or not rules:
             return
         rule_texts = []
@@ -316,18 +396,27 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_messages(data: dict, memories: list[RawMemory], af_name: str | None) -> None:
-        """Parse message history as STATE memory."""
-        messages = data.get("messages", [])
+    def _parse_af_messages(
+        agent: dict, memories: list[RawMemory], af_name: str | None
+    ) -> None:
+        """Parse ``messages`` from agent dict as STATE memory.
+
+        Message ``content`` is a list of ``{type, text}`` objects in
+        AgentFileSchema, not a plain string.
+        """
+        messages = agent.get("messages", [])
         if not isinstance(messages, list):
             return
         for msg in messages:
             if not isinstance(msg, dict):
                 continue
-            text = msg.get("text", msg.get("content", ""))
-            if not text or not isinstance(text, str):
-                continue
             role = msg.get("role", "")
+            # Skip system messages (already captured via system prompt)
+            if role == "system":
+                continue
+            text = _extract_message_text(msg)
+            if not text:
+                continue
             ts = _parse_timestamp(msg.get("created_at", msg.get("timestamp")))
             memories.append(
                 RawMemory(
@@ -339,15 +428,19 @@ class LettaSpawner:
             )
 
     @staticmethod
-    def _parse_af_env_vars(data: dict, memories: list[RawMemory], af_name: str | None) -> None:
-        """Parse env_vars. After redaction these become SECRET placeholders.
+    def _parse_af_env_vars(
+        agent: dict, memories: list[RawMemory], af_name: str | None
+    ) -> None:
+        """Parse ``tool_exec_environment_variables`` from agent dict.
 
-        We store them as CONTEXT memory so the pipeline secret scan (gitleaks,
-        which runs before parsing) can replace the raw values with
-        ``{{SECRET_NNN}}`` placeholders.  The pipeline then promotes them to
-        ``SecretRecord`` entries.
+        After redaction these become SECRET placeholders. We store them as
+        CONTEXT memory so the pipeline secret scan can replace the raw values
+        with ``{{SECRET_NNN}}`` placeholders.
         """
-        env_vars = data.get("env_vars", data.get("environment_variables", {}))
+        env_vars = agent.get(
+            "tool_exec_environment_variables",
+            agent.get("env_vars", agent.get("environment_variables", {})),
+        )
         if not isinstance(env_vars, dict) or not env_vars:
             return
         lines = [f"{k}={v}" for k, v in env_vars.items() if isinstance(v, str)]
@@ -362,28 +455,33 @@ class LettaSpawner:
 
     @staticmethod
     def _parse_af_mcp_servers(data: dict, mcp_configs: dict[str, dict]) -> None:
+        """Parse top-level ``mcp_servers`` list."""
         servers = data.get("mcp_servers", [])
         if not isinstance(servers, list):
             return
         for srv in servers:
             if not isinstance(srv, dict):
                 continue
-            name = srv.get("name", srv.get("server_name", ""))
+            name = srv.get("server_name", srv.get("name", ""))
             if name:
                 mcp_configs[name] = srv
 
     @staticmethod
-    def _parse_af_model_config(data: dict, source_metadata: dict[str, str]) -> None:
-        for key in ("model", "model_name", "embedding_model", "context_window"):
-            val = data.get(key)
-            if val is not None:
-                source_metadata[f"letta.{key}"] = str(val)
-        llm = data.get("llm_config", data.get("model_config", {}))
+    def _parse_af_model_config(agent: dict, source_metadata: dict[str, str]) -> None:
+        """Extract LLM and embedding config from the agent dict."""
+        llm = agent.get("llm_config", {})
         if isinstance(llm, dict):
-            for key in ("model", "model_endpoint", "context_window"):
+            for key in ("model", "model_endpoint", "model_endpoint_type", "context_window"):
                 val = llm.get(key)
                 if val is not None:
                     source_metadata[f"letta.llm.{key}"] = str(val)
+
+        emb = agent.get("embedding_config", {})
+        if isinstance(emb, dict):
+            for key in ("embedding_model", "embedding_dim", "embedding_endpoint_type"):
+                val = emb.get(key)
+                if val is not None:
+                    source_metadata[f"letta.embedding.{key}"] = str(val)
 
     # ------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)
@@ -560,14 +658,12 @@ class LettaSpawner:
 
     @staticmethod
     def _is_agent_file(af_path: Path) -> bool:
-        """Check if a file is a valid Letta AgentFile."""
+        """Check if a file is a valid Letta AgentFile (AgentFileSchema)."""
         if not af_path.exists() or not af_path.is_file():
             return False
         try:
             data = json.loads(af_path.read_text())
-            return isinstance(data, dict) and (
-                "memory" in data or "blocks" in data or "tools" in data or "system" in data
-            )
+            return isinstance(data, dict) and "agents" in data
         except (json.JSONDecodeError, OSError):
             return False
 
@@ -602,6 +698,29 @@ def _extract_block_text(block_value: object) -> str:
     if isinstance(block_value, dict):
         return (block_value.get("value", "") or block_value.get("text", "")).strip()
     return ""
+
+
+def _extract_message_text(msg: dict) -> str:
+    """Extract text from a message.
+
+    In AgentFileSchema, ``content`` is a list of ``{type, text}`` objects.
+    Falls back to plain string for legacy formats.
+    """
+    content = msg.get("content")
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text", "")
+                if text and isinstance(text, str):
+                    parts.append(text.strip())
+            elif isinstance(item, str):
+                parts.append(item.strip())
+        return "\n\n".join(parts)
+    if isinstance(content, str):
+        return content.strip()
+    text = msg.get("text", "")
+    return text.strip() if isinstance(text, str) else ""
 
 
 def _python_module_display_name(stem: str) -> str:

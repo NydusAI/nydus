@@ -1,4 +1,4 @@
-# API Reference
+# Python SDK
 
 Auto-generated reference for the PyNydus Python package (`import pynydus`).
 

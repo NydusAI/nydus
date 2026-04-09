@@ -85,5 +85,5 @@ nydus pull myuser/my-agent --version 0.1.0 -o agent.egg
 
 - {doc}`/guides/nydusfile`: control what gets spawned
 - {doc}`/guides/security`: how secrets and PII are protected
-- {doc}`/reference/cli`: full CLI reference
+- {doc}`/api/cli`: full CLI reference
 - {doc}`/guides/configuration`: environment variables

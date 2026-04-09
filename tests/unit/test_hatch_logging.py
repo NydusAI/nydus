@@ -247,7 +247,7 @@ class TestHatchPipelineLogging:
 
 
 class TestHatchModes:
-    """Phase 2–3: rebuild vs passthrough mode."""
+    """Step 2: rebuild vs passthrough mode."""
 
     def test_passthrough_mode_replays_raw_snapshot(self, tmp_path: Path):
         out_dir = tmp_path / "output"
@@ -429,7 +429,7 @@ class TestHatchModes:
 
 
 class TestHatchLogWrittenByPipeline:
-    """Phase 7: hatch_log.json is written by the pipeline."""
+    """Step 6: hatch_log.json is written by the pipeline."""
 
     def test_hatch_log_json_created_in_output(self, tmp_path: Path):
         out_dir = tmp_path / "output"

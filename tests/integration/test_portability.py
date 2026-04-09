@@ -51,19 +51,47 @@ def _write_zeroclaw(d: Path) -> Path:
 
 def _write_letta(d: Path) -> Path:
     d.mkdir(parents=True, exist_ok=True)
-    state = {
-        "name": "test_bot",
-        "system": "You are a helpful assistant.",
-        "memory": {
-            "persona": {"value": "I study ML."},
-            "human": {"value": "PhD student."},
-        },
-        "tools": [
-            {"name": "greet", "source_code": "def greet(): pass"},
+    af = {
+        "agents": [
+            {
+                "id": "agent-0",
+                "name": "test_bot",
+                "system": "You are a helpful assistant.",
+                "agent_type": "letta_v1_agent",
+                "block_ids": ["blk-0", "blk-1"],
+                "tool_ids": ["tool-0"],
+                "tool_rules": [],
+                "tags": [],
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "GPT-4 released 2023."}],
+                    },
+                ],
+                "in_context_message_ids": [],
+                "tool_exec_environment_variables": {},
+            }
         ],
+        "blocks": [
+            {"id": "blk-0", "label": "persona", "value": "I study ML.", "limit": 5000},
+            {"id": "blk-1", "label": "human", "value": "PhD student.", "limit": 5000},
+        ],
+        "tools": [
+            {
+                "id": "tool-0",
+                "name": "greet",
+                "source_code": "def greet(): pass",
+                "tool_type": "custom",
+                "source_type": "python",
+            },
+        ],
+        "groups": [],
+        "files": [],
+        "sources": [],
+        "mcp_servers": [],
+        "metadata": {},
     }
-    (d / "agent_state.json").write_text(json.dumps(state, indent=2))
-    (d / "archival_memory.json").write_text(json.dumps([{"text": "GPT-4 released 2023."}]))
+    (d / "agent.af").write_text(json.dumps(af, indent=2))
     return d
 
 
@@ -77,7 +105,7 @@ _WRITERS = {
 _TARGET_EXPECTED_FILES = {
     AgentType.OPENCLAW: {"SOUL.md", "MEMORY.md"},
     AgentType.ZEROCLAW: {"persona.md", "knowledge.md", ".zeroclaw/.keep"},
-    AgentType.LETTA: {"agent_state.json"},
+    AgentType.LETTA: {"agent.af"},
 }
 
 

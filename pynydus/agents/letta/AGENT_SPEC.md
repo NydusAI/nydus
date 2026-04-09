@@ -1,64 +1,98 @@
 # Letta Agent Specification
 
-A Letta agent is defined by a JSON-based state file, optional Python
-tool files, and archival memory. Supports both directory-based exports
-and SQLite database inputs.
+A Letta agent is defined by a `.af` AgentFile — Letta's open standard for
+serializing stateful agents into a single portable JSON file.
 
-## Core State
+Reference: <https://docs.letta.com/guides/core-concepts/agent-file/>
 
-| File | Purpose |
-|------|---------|
-| agent_state.json | Primary agent definition. Contains system prompt, memory blocks, tool definitions, and agent configuration. |
-| *.af | Letta AgentFile — portable agent format containing all state in a single JSON file. |
+## AgentFile (.af) — Canonical Format
 
-### Memory Blocks (inside agent_state.json)
+The `.af` file follows the `AgentFileSchema` with these top-level keys:
 
-| Block | Purpose |
+| Key | Type | Purpose |
+|-----|------|---------|
+| `agents` | list | Agent definitions. Typically one agent per file. |
+| `blocks` | list | Memory blocks referenced by agents (persona, human, custom). |
+| `tools` | list | Tool definitions (custom Python tools + built-in references). |
+| `mcp_servers` | list | MCP server configurations for external tool access. |
+| `skills` | list | Skill packages with `SKILL.md` files and source URLs. |
+| `groups` | list | Multi-agent group definitions. |
+| `files` | list | Attached file references. |
+| `sources` | list | Data source references. |
+| `metadata` | dict | Arbitrary metadata (e.g. nydus provenance). |
+
+### Agent Object (`agents[0]`)
+
+| Field | Purpose |
 |-------|---------|
-| memory.persona | Agent's self-description and personality. Maps to PERSONA label. |
-| memory.human | Information about the user. Maps to CONTEXT label. |
-| memory.system | System-level instructions. Maps to FLOW label. |
-| memory.* (other) | Additional custom blocks. Map to CONTEXT label. |
-| system | Top-level system prompt. Maps to FLOW label. |
+| `name` | Agent display name. |
+| `system` | System prompt text. Maps to FLOW label. |
+| `agent_type` | Runtime type (e.g. `letta_v1_agent`). |
+| `block_ids` | References to blocks in the top-level `blocks` list. |
+| `tool_ids` | References to tools in the top-level `tools` list. |
+| `tool_rules` | Behavioral sequencing constraints for tool calls. |
+| `tool_exec_environment_variables` | Environment variables for tool execution (credential placeholders). |
+| `messages` | Message history. Each message has `content` as a list of `{type, text}` objects. |
+| `llm_config` | LLM configuration (model, endpoint, context window). |
+| `embedding_config` | Embedding model configuration. |
+| `tags` | Agent tags for organization. |
 
-## Archival Memory
+### Block Labels and Memory Mapping
+
+| Block Label | Nydus MemoryLabel | Purpose |
+|-------------|-------------------|---------|
+| `persona` / `soul` | PERSONA | Agent's self-description and personality. |
+| `human` / `about_user` / `preferences` | CONTEXT | Information about the user. |
+| `custom_instructions` | FLOW | Custom behavioral instructions. |
+| `scratchpad` / `active_hypotheses` / `conversation_patterns` / `learned_corrections` | STATE | Working memory and learned state. |
+| *(other)* | CONTEXT | Any unrecognized block label defaults to CONTEXT. |
+
+### Tool Types
+
+| `tool_type` | Behavior |
+|-------------|----------|
+| `custom` | User-defined Python tools with `source_code`. Extracted as skill records. |
+| `letta_core` | Built-in Letta tools (e.g. `send_message`). `source_code` is null. Skipped during spawn. |
+| `letta_builtin` | Built-in Letta tools. `source_code` is null. Skipped during spawn. |
+| `letta_sleeptime_core` | Sleep-time tools. `source_code` is null. Skipped during spawn. |
+
+## Hatcher Output
+
+The hatcher produces:
 
 | File | Purpose |
 |------|---------|
-| archival_memory.json | Long-term archival memory. Array of `{text, timestamp}` entries. Maps to STATE label. |
-| archival/*.txt | Text-based archival entries, one per file. Maps to STATE label. |
-| archival/*.md | Markdown archival entries. Maps to STATE label. |
-| archival/*.json | JSON archival entries (array of objects or strings). Maps to STATE label. |
+| `agent.af` | Single AgentFile containing the full agent state. Importable by Letta via `letta.agents.import_file()`. |
+| `archival_memory.json` | Supplemental file for STATE memory (passages). The `.af` spec does not yet support archival passages. |
 
-## Tools
+## Legacy Formats (Spawner Fallbacks)
 
-| File | Purpose |
-|------|---------|
-| tools/*.py | Python tool files with docstrings and type hints. One function per file preferred. |
-| tools[] (in agent_state.json) | Inline tool definitions with `name` and `source_code` fields. |
-
-## Configuration
+The spawner also supports legacy directory-based exports for backward
+compatibility. These are used only when no `.af` file is present.
 
 | File | Purpose |
 |------|---------|
-| .letta/ | Marker directory indicating a Letta project. |
-| .letta/config.json | Letta configuration, may contain API keys and endpoints. |
-| system_prompt.md / .txt | Fallback system prompt if not present in agent_state.json. |
+| `agent_state.json` | Primary agent definition with system prompt, memory blocks, and inline tools. |
+| `tools/*.py` | Python tool files. |
+| `archival_memory.json` | Long-term archival memory entries. |
+| `archival/*.txt` / `*.md` | Text-based archival entries. |
+| `system_prompt.md` / `.txt` | Fallback system prompt. |
+| `.letta/` | Marker directory. |
 
-## Database Mode
+### Database Mode
 
 | Table | Purpose |
 |-------|---------|
-| blocks | Memory blocks (persona, human, system, custom). |
-| archival_memory | Long-term archival memory entries. |
-| tools | Tool definitions with source code. |
-| agents | Agent configuration JSON. |
+| `blocks` | Memory blocks. |
+| `archival_memory` | Archival memory entries. |
+| `tools` | Tool definitions with source code. |
+| `agents` | Agent configuration. |
 
 ## Conventions
 
-- agent_state.json is the single source of truth when present.
-- Memory blocks have character limits — keep persona and human blocks concise.
+- The `.af` file is the canonical, importable format. Prefer it over directory-based exports.
+- Memory blocks have character limits (typically 5000). Keep persona and human blocks concise.
 - Python tools should have proper docstrings and type hints for the Letta runtime.
-- The system prompt in agent_state.json takes precedence over system_prompt.md/txt.
+- Only custom tools (with `source_code`) are extracted as skills. Built-in tools are skipped.
+- Message `content` in `.af` is always a list of `{type, text}` objects, never a plain string.
 - Archival memory is append-only in practice; entries accumulate over the agent's lifetime.
-- Tool definitions in agent_state.json and tools/*.py are merged (disk files take precedence).

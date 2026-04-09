@@ -1,7 +1,7 @@
 # Adding New Connectors
 
 PyNydus is designed for extensibility. Adding support for a new framework
-requires implementing a single file with a small interface.
+requires implementing a small interface and a platform specification.
 
 ## Architecture
 
@@ -17,12 +17,15 @@ agents/
   openclaw/
     spawner.py
     hatcher.py
+    AGENT_SPEC.md
   letta/
     spawner.py
     hatcher.py
+    AGENT_SPEC.md
   zeroclaw/
     spawner.py
     hatcher.py
+    AGENT_SPEC.md
 ```
 
 ## Adding a new source
@@ -72,6 +75,9 @@ Then register:
 
 1. Add `SLACK = "slack"` to `AgentType` in `pynydus/common/enums.py`
 2. Add a case to `_get_spawner()` in `pynydus/engine/pipeline.py`
+3. Create `pynydus/agents/slack/AGENT_SPEC.md` describing the platform's
+   workspace conventions, file layout, and formatting rules (see existing
+   specs for examples)
 
 The new source is immediately available for all targets.
 
@@ -109,7 +115,31 @@ class NewTargetHatcher:
 ```
 
 
-Register: add a case to `_get_hatcher()` in `pynydus/engine/hatcher.py`.
+Register:
+
+1. Add a case to `_get_hatcher()` in `pynydus/engine/hatcher.py`
+2. Create `pynydus/agents/newtarget/AGENT_SPEC.md` so the hatch LLM can
+   adapt output to the target platform's idioms. See {doc}`/guides/llm-refinement`
+   for how specs are used during refinement.
+
+## Platform specification (AGENT_SPEC.md)
+
+
+Every connector directory must include an `AGENT_SPEC.md` file that describes
+the platform's workspace conventions. At hatch time, Nydus loads the source and
+target specs and injects them into the LLM prompt. Without a spec, LLM
+refinement cannot adapt content to the platform's idioms.
+
+The spec should cover:
+
+- Required and optional files with their roles
+- File naming conventions (e.g., uppercase vs. lowercase, extensions)
+- Content format expectations (Markdown, TOML, JSON, Python)
+- Directory structure and marker files
+- Any platform-specific constraints
+
+See the existing `AGENT_SPEC.md` files in `pynydus/agents/openclaw/`,
+`pynydus/agents/letta/`, and `pynydus/agents/zeroclaw/` for examples.
 
 ## Key types
 

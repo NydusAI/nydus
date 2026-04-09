@@ -1,16 +1,16 @@
 """Letta hatcher connector. Spec §10.3.
 
-Produces a valid Letta agent project directory from an Egg:
-- agent_state.json     <- memory blocks + agent config skeleton
-- tools/               <- skill records as Python tool files
-- archival_memory.json <- state memory
-- system_prompt.md     <- flow memory
+Produces a valid Letta AgentFile (.af) from an Egg:
+- agent.af  <- single JSON file conforming to AgentFileSchema
+
+The .af file is a self-contained portable format importable by any
+Letta server via ``letta.agents.import_file()``.
 
 All 4 MemoryLabel values have explicit mappings:
-- PERSONA -> memory.persona block in agent_state.json
-- CONTEXT -> memory.human block in agent_state.json
-- FLOW    -> system field + system_prompt.md
-- STATE   -> archival_memory.json
+- PERSONA -> blocks[label="persona"]
+- CONTEXT -> blocks[label="human"]
+- FLOW    -> agents[0].system
+- STATE   -> archival_memory.json (supplemental; .af doesn't support passages yet)
 """
 
 from __future__ import annotations
@@ -20,21 +20,14 @@ import json
 from pynydus.api.errors import HatchError
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import Egg
-from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
 from pynydus.common.enums import MemoryLabel, SecretKind
-
-_LABEL_TO_BLOCK: dict[MemoryLabel, str] = {
-    MemoryLabel.PERSONA: "persona",
-    MemoryLabel.CONTEXT: "human",
-    MemoryLabel.FLOW: "system",
-}
 
 
 class LettaHatcher:
-    """Produce a valid Letta agent directory from an Egg."""
+    """Produce a valid Letta AgentFile (.af) from an Egg."""
 
     def render(self, egg: Egg) -> RenderResult:
-        """Render Egg records into target file contents.
+        """Render Egg records into an AgentFileSchema-shaped .af file.
 
         Returns a dict of ``filename -> content`` with ``{{SECRET_NNN}}``
         and ``{{PII_NNN}}`` placeholders intact.
@@ -42,22 +35,153 @@ class LettaHatcher:
         files: dict[str, str] = {}
         warnings: list[str] = []
 
-        # --- agent_state.json ---
-        agent_state = self._build_agent_state(egg)
-        files["agent_state.json"] = json.dumps(agent_state, indent=2) + "\n"
+        blocks: list[dict] = []
+        block_ids: list[str] = []
+        tools: list[dict] = []
+        tool_ids: list[str] = []
 
-        # --- system_prompt.md ---
-        system_records = [m for m in egg.memory.memory if m.label == MemoryLabel.FLOW]
-        if system_records:
-            files["system_prompt.md"] = "\n\n".join(r.text for r in system_records) + "\n"
+        # --- blocks from PERSONA and CONTEXT memory ---
+        block_idx = 0
+        persona_texts: list[str] = []
+        human_texts: list[str] = []
 
-        # --- tools/ directory ---
-        if egg.skills.skills:
-            for skill in egg.skills.skills:
-                fname = _skill_to_filename(skill.name)
-                files[f"tools/{fname}"] = skill.content + "\n"
+        for mem_rec in egg.memory.memory:
+            if mem_rec.label == MemoryLabel.PERSONA:
+                persona_texts.append(mem_rec.text)
+            elif mem_rec.label == MemoryLabel.CONTEXT:
+                human_texts.append(mem_rec.text)
 
-        # --- archival_memory.json (state) ---
+        if persona_texts:
+            bid = f"block-{block_idx}"
+            blocks.append({
+                "id": bid,
+                "label": "persona",
+                "value": "\n\n".join(persona_texts),
+                "limit": 5000,
+                "is_template": False,
+                "read_only": False,
+                "description": None,
+                "metadata": {},
+            })
+            block_ids.append(bid)
+            block_idx += 1
+
+        if human_texts:
+            bid = f"block-{block_idx}"
+            blocks.append({
+                "id": bid,
+                "label": "human",
+                "value": "\n\n".join(human_texts),
+                "limit": 5000,
+                "is_template": False,
+                "read_only": False,
+                "description": None,
+                "metadata": {},
+            })
+            block_ids.append(bid)
+            block_idx += 1
+
+        # --- system prompt from FLOW memory ---
+        flow_records = [m for m in egg.memory.memory if m.label == MemoryLabel.FLOW]
+        system_prompt = "\n\n".join(r.text for r in flow_records) if flow_records else ""
+
+        # --- tools from skills ---
+        for i, skill in enumerate(egg.skills.skills):
+            tid = f"tool-{i}"
+            tools.append({
+                "id": tid,
+                "name": _skill_to_module_name(skill.name),
+                "description": f"Custom tool: {skill.name}",
+                "source_code": skill.content,
+                "source_type": "python",
+                "tool_type": "custom",
+                "tags": [],
+                "json_schema": {
+                    "name": _skill_to_module_name(skill.name),
+                    "description": f"Custom tool: {skill.name}",
+                    "parameters": {"type": "object", "properties": {}, "required": []},
+                },
+                "return_char_limit": 50000,
+            })
+            tool_ids.append(tid)
+
+        # --- credential placeholders -> tool_exec_environment_variables ---
+        env_vars: dict[str, str] = {}
+        credentials = [s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL]
+        for cred in credentials:
+            env_vars[cred.name] = cred.placeholder
+
+        # --- round-trip LLM config from source metadata ---
+        llm_config: dict | None = None
+        embedding_config: dict | None = None
+        source_meta = egg.manifest.source_metadata or {}
+        if any(k.startswith("letta.llm.") for k in source_meta):
+            llm_config = {}
+            for k, v in source_meta.items():
+                if k.startswith("letta.llm."):
+                    field = k.removeprefix("letta.llm.")
+                    llm_config[field] = v
+        if any(k.startswith("letta.embedding.") for k in source_meta):
+            embedding_config = {}
+            for k, v in source_meta.items():
+                if k.startswith("letta.embedding."):
+                    field = k.removeprefix("letta.embedding.")
+                    embedding_config[field] = v
+
+        # --- build agent dict ---
+        agent: dict = {
+            "id": "agent-0",
+            "name": source_meta.get("letta.name", "nydus_agent"),
+            "system": system_prompt,
+            "agent_type": source_meta.get("letta.agent_type", "letta_v1_agent"),
+            "block_ids": block_ids,
+            "tool_ids": tool_ids,
+            "tool_rules": [],
+            "tags": [],
+            "messages": [],
+            "in_context_message_ids": [],
+            "files_agents": [],
+            "group_ids": [],
+            "tool_exec_environment_variables": env_vars,
+            "include_base_tools": False,
+            "include_multi_agent_tools": False,
+            "include_base_tool_rules": False,
+            "include_default_source": False,
+            "message_buffer_autoclear": False,
+            "enable_sleeptime": False,
+        }
+        if llm_config:
+            agent["llm_config"] = llm_config
+        if embedding_config:
+            agent["embedding_config"] = embedding_config
+
+        # --- mcp_servers ---
+        mcp_servers: list[dict] = []
+        if egg.skills.mcp_configs:
+            for name, cfg in sorted(egg.skills.mcp_configs.items()):
+                srv = cfg.model_dump(exclude_defaults=True)
+                srv.setdefault("server_name", name)
+                mcp_servers.append(srv)
+
+        # --- build AgentFileSchema ---
+        af_schema: dict = {
+            "agents": [agent],
+            "groups": [],
+            "blocks": blocks,
+            "files": [],
+            "sources": [],
+            "tools": tools,
+            "mcp_servers": mcp_servers,
+            "metadata": {
+                "nydus_source": egg.manifest.agent_type.value,
+                "nydus_version": egg.manifest.nydus_version,
+            },
+        }
+
+        files["agent.af"] = json.dumps(af_schema, indent=2) + "\n"
+
+        # --- archival_memory.json (STATE memory, supplemental) ---
+        # .af doesn't support archival passages yet (on Letta roadmap)
         state_records = [m for m in egg.memory.memory if m.label == MemoryLabel.STATE]
         if state_records:
             entries = []
@@ -66,12 +190,6 @@ class LettaHatcher:
                 entry["timestamp"] = rec.timestamp.isoformat() if rec.timestamp else None
                 entries.append(entry)
             files["archival_memory.json"] = json.dumps(entries, indent=2) + "\n"
-
-        # --- .letta/config.json (credential placeholders) ---
-        credentials = [s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL]
-        if credentials:
-            config = {s.name: s.placeholder for s in credentials}
-            files[".letta/config.json"] = json.dumps(config, indent=2) + "\n"
 
         if not files:
             raise HatchError("Egg produced no output files for Letta target")
@@ -158,49 +276,6 @@ class LettaHatcher:
             valid=not any(i.level == "error" for i in issues),
             issues=issues,
         )
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    def _build_agent_state(self, egg: Egg) -> dict:
-        """Build the agent_state.json content from Egg data."""
-        state: dict = {
-            "name": "nydus_agent",
-            "memory": {},
-            "tools": [],
-        }
-
-        for mem_rec in egg.memory.memory:
-            if mem_rec.label in _LABEL_TO_BLOCK:
-                block_name = _LABEL_TO_BLOCK[mem_rec.label]
-                if block_name in state["memory"]:
-                    state["memory"][block_name]["value"] += "\n\n" + mem_rec.text
-                else:
-                    state["memory"][block_name] = {
-                        "value": mem_rec.text,
-                        "limit": 5000,
-                    }
-
-        flow_records = [m for m in egg.memory.memory if m.label == MemoryLabel.FLOW]
-        if flow_records:
-            state["system"] = "\n\n".join(r.text for r in flow_records)
-
-        for skill in egg.skills.skills:
-            state["tools"].append(
-                {
-                    "name": _skill_to_module_name(skill.name),
-                    "source_code": skill.content,
-                }
-            )
-
-        if egg.manifest.source_metadata:
-            state["metadata"] = {
-                "nydus_source": egg.manifest.agent_type.value,
-                "nydus_version": egg.manifest.nydus_version,
-            }
-
-        return state
 
 
 # ---------------------------------------------------------------------------

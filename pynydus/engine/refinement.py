@@ -1,10 +1,10 @@
 """LLM refinement for spawning and hatching pipelines.
 
-Spawning (Phase 7): ``refine_skills`` / ``refine_memory`` use the configured
+Spawning (Step 7): ``refine_skills`` / ``refine_memory`` use the configured
 LLM tier to deduplicate memory records and normalize skill formatting.
 The LLM always operates on already-redacted content.
 
-Hatching (Phase 4): ``refine_hatch`` uses the same tier to adapt or polish
+Hatching (Step 3): ``refine_hatch`` uses the same tier to adapt or polish
 reconstructed files for the target platform's conventions.
 """
 
@@ -175,7 +175,7 @@ def _load_agent_spec(agent_type: AgentType) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Standalone refinement helpers (used by pipeline Phase 7)
+# Standalone refinement helpers (used by pipeline Step 7)
 # ---------------------------------------------------------------------------
 
 
@@ -380,7 +380,7 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
 
 
 # ---------------------------------------------------------------------------
-# refine_hatch — Phase 6 (hatching)
+# refine_hatch — hatching Step 3
 # ---------------------------------------------------------------------------
 
 
@@ -403,7 +403,7 @@ def refine_hatch(
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Phase 4: LLM refinement during hatching.
+    """Step 3: LLM refinement during hatching.
 
     Operates on a file dict (filename -> content) and returns the
     updated dict.  No disk I/O — the pipeline handles writing.
@@ -508,7 +508,9 @@ def refine_hatch(
 def _infer_target_type(file_dict: dict[str, str]) -> AgentType | None:
     """Best-effort infer the target platform from file names."""
     filenames = set(file_dict)
-    if "agent_state.json" in filenames:
+    if "agent.af" in filenames or "agent_state.json" in filenames:
+        return AgentType.LETTA
+    if any(f.endswith(".af") for f in filenames):
         return AgentType.LETTA
     if "soul.md" in filenames or "SOUL.md" in filenames:
         return AgentType.OPENCLAW

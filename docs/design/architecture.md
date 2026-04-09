@@ -1,6 +1,6 @@
 # Architecture
 
-High-level design of PyNydus: data flow, pipeline phases, module
+High-level design of PyNydus: data flow, pipeline steps, module
 responsibilities, and key design decisions.
 
 ## Data flow
@@ -26,49 +26,30 @@ Memory[**flow**], Memory[**context**], or Memory[**state**].
 ## Spawn pipeline
 
 
-Entry point: `pynydus.engine.pipeline.spawn()`. Returns `(egg, raw_artifacts, logs)`.
+The spawn pipeline has 9 steps: resolve base egg, read source files, redact
+secrets/PII, parse sources, build records, merge with base egg, LLM refinement,
+post-processing, and package egg.
 
-| Phase | Module | What happens |
-|-------|--------|-------------|
-| 1. Parse Nydusfile | `engine/nydusfile.py` | Resolve `FROM`, `SOURCE`, `REDACT`, `EXCLUDE`, `LABEL`, merge ops |
-| 2. Read source files | `engine/pipeline.py` | Read files matching spawner's `FILE_PATTERNS`, apply `REMOVE file` drops |
-| 3. Secret scan | `security/gitleaks.py` | Replace credentials with `{{SECRET_NNN}}` placeholders |
-| 4. PII redaction | `security/presidio.py` | Replace PII with `{{PII_NNN}}` placeholders |
-| 5. Parse | `agents/*/spawner.py` | Platform-specific extraction into `ParseResult` |
-| 6. Build records | `engine/pipeline.py` | Normalize into `SkillRecord`, `MemoryRecord`, `SecretRecord` with stable IDs |
-| 7. LLM refinement | `engine/refinement.py` | Deduplicate memory, normalize skills (placeholder'd content only) |
-| 8. Package | `engine/pipeline.py` | Build `Manifest` + `Egg`, apply `EXCLUDE`, `LABEL` |
+Step 3 is the **secrets OUT boundary**. After it, no real credentials or PII
+exist anywhere in the pipeline.
 
+Every step appends structured entries to `spawn_log`, which is stored in the
+egg and forwarded to the hatch LLM as full JSON context.
 
-Phases 3–4 form the **secrets OUT boundary**. After them, no real credentials
-or PII exist in the pipeline. The spawner (phase 5) and LLM (phase 7) only
-see placeholder tokens. See {doc}`/guides/security` for details.
-
-
-When no Nydusfile exists, PyNydus probes each spawner's `detect()`. If multiple
-types match, spawn fails with an ambiguous layout error.
+See {doc}`/design/spawn-pipeline` for the step-by-step deep dive.
 
 ## Hatch pipeline
 
 
-Entry point: `pynydus.engine.hatcher.hatch()`.
+The hatch pipeline has 6 steps: version check, build file dict, LLM polish,
+secrets IN, write to disk, and hatch log.
 
-| Phase | Module | What happens |
-|-------|--------|-------------|
-| 1. Version check | `engine/hatcher.py` | Reject eggs requiring a newer Nydus version |
-| 2. Render files | `agents/*/hatcher.py` | Rebuild from modules (default) or passthrough replay of `raw/` |
-| 3. LLM polish | `engine/refinement.py` | Adapt/polish for target conventions (placeholder'd content only) |
-| 4. Secret injection | `engine/hatcher.py` | Substitute `{{SECRET_NNN}}` / `{{PII_NNN}}` from `.env` |
-| 5. Write to disk | `engine/hatcher.py` | Write output files |
-| 6. Hatch log | `engine/hatcher.py` | Write `logs/hatch_log.json` |
+Step 4 is the **secrets IN boundary**, the last transformation before disk.
 
+Two modes: **rebuild** (default, generates from structured modules) and
+**passthrough** (replays redacted `raw/` verbatim, requires target = source).
 
-Phase 4 is the **secrets IN boundary**, the last transformation before disk.
-
-**Hatch modes:**
-- **Rebuild** (default): render from structured modules via target connector.
-- **Passthrough** (`--passthrough`): replay redacted `raw/` verbatim. Requires
-  target = source type and non-empty `raw/`.
+See {doc}`/design/hatch-pipeline` for the step-by-step deep dive.
 
 ## Module responsibilities
 
@@ -83,16 +64,21 @@ Pydantic schemas for `Egg`, `Manifest`, modules, and record types. Also defines
 
 Each platform has a **spawner** (`parse(files) -> ParseResult`) and a
 **hatcher** (`render(egg) -> RenderResult`). Connectors are pure functions over
-file dicts with no filesystem access. See {doc}`/reference/connectors`.
+file dicts with no filesystem access. See {doc}`/design/connectors`.
+
+Each platform directory also contains an `AGENT_SPEC.md` that defines the
+platform's workspace conventions. These specs are loaded at hatch time and
+injected into the LLM prompt so the model can adapt output to match target
+platform idioms. See {doc}`/guides/llm-refinement`.
 
 
 ### `engine/`: Core pipelines
 
-- `pipeline.py`: spawn orchestration
-- `hatcher.py`: hatch orchestration
+- `pipeline.py`: spawn orchestration (Steps 1-9)
+- `hatcher.py`: hatch orchestration (Steps 1-6)
 - `nydusfile.py`: Nydusfile DSL parser
 - `merger.py`: `FROM` base egg merge operations
-- `refinement.py`: LLM refinement (spawn + hatch)
+- `refinement.py`: LLM refinement (spawn Step 7 + hatch Step 3)
 - `packager.py`: `.egg` ZIP I/O
 - `validator.py`: structural egg validation
 - `differ.py`: egg-to-egg diff
