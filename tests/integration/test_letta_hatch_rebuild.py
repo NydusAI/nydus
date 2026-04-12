@@ -3,7 +3,7 @@
 Spawns from a rich Letta .af source, hatches in rebuild mode, and verifies
 the output is a single agent.af conforming to AgentFileSchema.
 
-Marked ``@pytest.mark.integration`` — requires ``gitleaks`` on PATH.
+Marked ``@pytest.mark.integration``: requires ``gitleaks`` on PATH.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 # Session Startup
 
 1. Read SOUL.md
-2. Read USER.md — know your audience
+2. Read USER.md: know your audience
 3. Read today + yesterday from memory/
 4. Read MEMORY.md for product catalog and policies
 

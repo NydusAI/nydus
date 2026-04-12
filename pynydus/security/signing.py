@@ -193,19 +193,16 @@ def verify_egg_content(
         content_parts: Same ordered parts used when signing.
 
     Returns:
-        ``True`` if hash and Ed25519 signature match; ``False`` if hash or
+        ``True`` if hash and Ed25519 signature match. ``False`` if hash or
         signature check fails.
     """
     from cryptography.exceptions import InvalidSignature
 
-    # Recompute content hash
     content_hash = compute_content_hash(content_parts)
 
-    # Check content hash matches
     if content_hash.hex() != signature_data["content_hash"]:
         return False
 
-    # Verify Ed25519 signature
     public_key = load_public_key(signature_data["public_key"].encode("ascii"))
     signature = b64decode(signature_data["signature"])
 

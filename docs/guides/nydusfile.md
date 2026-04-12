@@ -147,12 +147,15 @@ REMOVE file <glob-pattern>
 Glob patterns match source file keys (e.g. `SOUL.md`, `skills/*.md`).
 Applied after read, before redaction and parse.
 
-## Auto-generated Nydusfile
+## Nydusfile is required
 
+A `Nydusfile` must exist in the working directory before running
+`nydus spawn`.  If none is found, the command exits with an error.
+Create one with at least a `SOURCE` directive:
 
-If no `Nydusfile` exists, `nydus spawn` auto-detects the agent layout.
-If **multiple** agent types match (ambiguous), add a `Nydusfile` with an
-explicit `SOURCE <agent_type> <path>` line.
+```text
+SOURCE openclaw ./
+```
 
 ## Static verification
 

@@ -35,7 +35,7 @@ class Finding:
         start_line: 1-based line number.
         start_column: Start column (1-based, gitleaks convention).
         end_column: End column.
-        secret: Optional ``Secret`` field from JSON; preferred replacement text
+        secret: Optional ``Secret`` field from JSON. preferred replacement text
             when it appears verbatim in the file content.
     """
 

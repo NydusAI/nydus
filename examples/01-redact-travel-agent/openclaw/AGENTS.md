@@ -8,7 +8,7 @@
 # Booking Flow
 
 1. When Jane asks about a trip, research options before presenting.
-   Never show raw search results — curate the top 3.
+   Never show raw search results: curate the top 3.
 2. Always include: price, points redemption value, layover duration,
    seat availability.
 3. After she picks, confirm all details in a summary before booking.

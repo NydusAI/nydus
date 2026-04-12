@@ -50,7 +50,7 @@ def _is_tools_source(rec: MemoryRecord) -> bool:
 def _date_key_from_record(rec: MemoryRecord) -> str | None:
     """Extract a YYYY-MM-DD date key from a state record.
 
-    Prefers the record's timestamp field; falls back to extracting a date
+    Prefers the record's timestamp field. falls back to extracting a date
     from source_store (e.g. ``memory/2026-04-01.md``).
     """
     if rec.timestamp:
@@ -70,7 +70,15 @@ def _build_config_toml(
     credentials: list[tuple[str, str]],
     source_metadata: dict[str, str],
 ) -> str:
-    """Build a TOML config string from credentials and source metadata."""
+    """Build a TOML config string from credentials and source metadata.
+
+    Args:
+        credentials: List of ``(name, placeholder)`` pairs for each credential.
+        source_metadata: Key-value metadata from the Egg manifest.
+
+    Returns:
+        TOML-formatted string, or empty string if nothing to write.
+    """
     lines: list[str] = []
 
     agent_name = source_metadata.get("zeroclaw.agent.name") or source_metadata.get("zeroclaw.name")
@@ -102,10 +110,16 @@ class ZeroClawHatcher:
     """Produce a valid ZeroClaw project directory from an Egg."""
 
     def render(self, egg: Egg) -> RenderResult:
-        """Render Egg records into target file contents.
+        """Render Egg records into ZeroClaw project files.
 
-        Returns a dict of ``filename -> content`` with ``{{SECRET_NNN}}``
-        and ``{{PII_NNN}}`` placeholders intact.
+        Placeholders (``{{SECRET_NNN}}``, ``{{PII_NNN}}``) are preserved.
+        the pipeline substitutes real values after this step.
+
+        Args:
+            egg: The Egg to render.
+
+        Returns:
+            File dict and any warnings produced during rendering.
         """
         files: dict[str, str] = {}
         warnings: list[str] = []
@@ -201,6 +215,13 @@ class ZeroClawHatcher:
 
         .. deprecated::
             Use :meth:`render` instead. The pipeline now handles disk I/O.
+
+        Args:
+            egg: The Egg to hatch.
+            output_dir: Directory where output files are written.
+
+        Returns:
+            Result with list of created files and any warnings.
         """
         result = self.render(egg)
 
@@ -212,7 +233,6 @@ class ZeroClawHatcher:
             fpath.write_text(content, encoding="utf-8")
             files_created.append(fname)
 
-        # .zeroclaw marker
         marker = output_dir / ".zeroclaw"
         marker.mkdir(exist_ok=True)
 
@@ -224,7 +244,14 @@ class ZeroClawHatcher:
         )
 
     def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated ZeroClaw output."""
+        """Validate generated ZeroClaw output.
+
+        Args:
+            result: The hatch result to validate.
+
+        Returns:
+            Report with ``valid`` flag and any issues found.
+        """
         issues: list[ValidationIssue] = []
 
         has_persona = "persona.md" in result.files_created

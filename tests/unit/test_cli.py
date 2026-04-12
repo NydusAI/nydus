@@ -65,7 +65,7 @@ class TestSpawnCommand:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["spawn", "-o", str(tmp_path / "out.egg")])
         assert result.exit_code == 1
-        assert "Cannot auto-detect" in result.output
+        assert "No Nydusfile found" in result.output
 
     def test_spawn_auto_signs_when_key_available(
         self, openclaw_source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

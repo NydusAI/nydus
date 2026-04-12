@@ -10,7 +10,7 @@ All 4 MemoryLabel values have explicit mappings:
 - PERSONA -> blocks[label="persona"]
 - CONTEXT -> blocks[label="human"]
 - FLOW    -> agents[0].system
-- STATE   -> archival_memory.json (supplemental; .af doesn't support passages yet)
+- STATE   -> archival_memory.json (supplemental. .af doesn't support passages yet)
 """
 
 from __future__ import annotations
@@ -30,8 +30,14 @@ class LettaHatcher:
     def render(self, egg: Egg) -> RenderResult:
         """Render Egg records into an AgentFileSchema-shaped .af file.
 
-        Returns a dict of ``filename -> content`` with ``{{SECRET_NNN}}``
-        and ``{{PII_NNN}}`` placeholders intact.
+        Placeholders (``{{SECRET_NNN}}``, ``{{PII_NNN}}``) are preserved.
+        the pipeline substitutes real values after this step.
+
+        Args:
+            egg: The Egg to render.
+
+        Returns:
+            File dict and any warnings produced during rendering.
         """
         files: dict[str, str] = {}
         warnings: list[str] = []
@@ -208,6 +214,13 @@ class LettaHatcher:
 
         .. deprecated::
             Use :meth:`render` instead. The pipeline now handles disk I/O.
+
+        Args:
+            egg: The Egg to hatch.
+            output_dir: Directory where output files are written.
+
+        Returns:
+            Result with list of created files and any warnings.
         """
         result = self.render(egg)
 
@@ -227,7 +240,14 @@ class LettaHatcher:
         )
 
     def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated Letta output."""
+        """Validate generated Letta output.
+
+        Args:
+            result: The hatch result to validate.
+
+        Returns:
+            Report with ``valid`` flag and any issues found.
+        """
         issues: list[ValidationIssue] = []
 
         if "agent_state.json" not in result.files_created:

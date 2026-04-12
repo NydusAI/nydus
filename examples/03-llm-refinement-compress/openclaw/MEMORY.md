@@ -18,7 +18,7 @@ patterns where paying per invocation beats paying for idle capacity.
 
 On Google Cloud, the equivalent options are Compute Engine for VMs,
 Cloud Run for managed containers, GKE for Kubernetes, and Cloud
-Functions for serverless. Cloud Run is notably simpler than ECS — it
+Functions for serverless. Cloud Run is notably simpler than ECS: it
 auto-scales to zero, which makes it excellent for internal tools and
 APIs with bursty traffic. GKE Autopilot removes most of the node
 management overhead that makes EKS painful for small teams.
@@ -27,7 +27,7 @@ management overhead that makes EKS painful for small teams.
 
 Azure's compute lineup includes Virtual Machines, Azure Container
 Apps, AKS, and Azure Functions. Container Apps is Azure's answer to
-Cloud Run — managed containers with scale-to-zero. AKS has improved
+Cloud Run: managed containers with scale-to-zero. AKS has improved
 significantly in the last two years but still requires more operational
 effort than GKE Autopilot for equivalent workloads.
 

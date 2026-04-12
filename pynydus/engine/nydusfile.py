@@ -58,7 +58,14 @@ class NydusfileConfig:
 def parse(text: str) -> NydusfileConfig:
     """Parse a Nydusfile string and return a verified config.
 
-    Raises NydusfileError on any syntax or verification failure.
+    Args:
+        text: Full Nydusfile source (line-oriented DSL).
+
+    Returns:
+        Parsed and validated configuration.
+
+    Raises:
+        NydusfileError: On syntax errors or failed static verification.
     """
     base_egg: str | None = None
     merge_ops: list[MergeOp] = []
@@ -226,7 +233,17 @@ def parse(text: str) -> NydusfileConfig:
 
 
 def parse_file(path: str) -> NydusfileConfig:
-    """Parse a Nydusfile from a file path."""
+    """Parse a Nydusfile from a file path.
+
+    Args:
+        path: Filesystem path to the Nydusfile.
+
+    Returns:
+        Parsed and validated configuration.
+
+    Raises:
+        NydusfileError: On read/parse/verification failure.
+    """
     text = Path(path).read_text()
     return parse(text)
 
@@ -238,6 +255,18 @@ def _is_remove_file_directive(arg: str) -> bool:
 
 
 def _parse_remove_file_pattern(arg: str, lineno: int) -> str:
+    """Extract the glob pattern from a ``REMOVE file <glob>`` argument.
+
+    Args:
+        arg: The argument string after the REMOVE directive.
+        lineno: Line number for error reporting.
+
+    Returns:
+        The glob pattern string.
+
+    Raises:
+        NydusfileError: If the pattern is missing or empty.
+    """
     parts = arg.strip().split(None, 1)
     if len(parts) < 2 or parts[0].lower() != "file":
         raise NydusfileError(
@@ -337,64 +366,30 @@ def _unquote(s: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Nydusfile discovery and default template generation
+# Nydusfile discovery
 # ---------------------------------------------------------------------------
 
 
 def resolve_nydusfile(directory: Path) -> Path:
-    """Find or create a Nydusfile in the given directory.
+    """Find an existing Nydusfile in *directory*.
 
-    If no Nydusfile exists, auto-detects the agent type and writes
-    a default Nydusfile from the corresponding template.
+    Users must provide an explicit Nydusfile with a ``SOURCE`` directive (or
+    valid FROM-only configuration) for spawn workflows.
+
+    Args:
+        directory: Directory to search (expects ``Nydusfile`` in this folder).
+
+    Returns:
+        Resolved path to the Nydusfile.
+
+    Raises:
+        NydusfileError: If no Nydusfile exists in *directory*.
     """
     nydusfile = directory / "Nydusfile"
     if nydusfile.exists():
         return nydusfile
 
-    agent_type = _auto_detect_for_template(directory)
-    template = _load_default_template(agent_type)
-    nydusfile.write_text(template)
-    _logger.info("Created default Nydusfile for %s", agent_type)
-    return nydusfile
-
-
-def _auto_detect_for_template(directory: Path) -> AgentType:
-    """Identify the agent type in *directory* by probing each spawner.
-
-    All spawners are evaluated; if more than one matches, the layout is
-    ambiguous and the user must add an explicit ``SOURCE <type> <path>``.
-    """
-    from pynydus.agents.letta.spawner import LettaSpawner
-    from pynydus.agents.openclaw.spawner import OpenClawSpawner
-    from pynydus.agents.zeroclaw.spawner import ZeroClawSpawner
-
-    candidates: list[tuple[object, AgentType]] = [
-        (OpenClawSpawner(), AgentType.OPENCLAW),
-        (LettaSpawner(), AgentType.LETTA),
-        (ZeroClawSpawner(), AgentType.ZEROCLAW),
-    ]
-    matches = [at for spawner, at in candidates if spawner.detect(directory)]
-
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        names = ", ".join(sorted(m.value for m in matches))
-        raise NydusfileError(
-            f"Ambiguous agent layout in {directory}: matches {names}. "
-            "Create a Nydusfile with an explicit line such as "
-            "'SOURCE openclaw ./' or 'SOURCE zeroclaw ./' (adjust type and path)."
-        )
     raise NydusfileError(
-        f"Cannot auto-detect agent type in {directory}. "
-        "Create a Nydusfile manually with a SOURCE directive."
+        f"No Nydusfile found in {directory}. "
+        "Create one with a SOURCE directive (e.g. 'SOURCE openclaw ./')."
     )
-
-
-def _load_default_template(agent_type: AgentType) -> str:
-    """Load the Nydusfile.default template for *agent_type*."""
-    template_path = (
-        Path(__file__).resolve().parent.parent / "agents" / agent_type / "Nydusfile.default"
-    )
-    if not template_path.exists():
-        raise NydusfileError(f"No default Nydusfile template for agent type '{agent_type}'")
-    return template_path.read_text()

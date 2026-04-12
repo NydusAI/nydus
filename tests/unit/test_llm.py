@@ -211,7 +211,7 @@ class TestLoadConfig:
 
 
 # ---------------------------------------------------------------------------
-# Pipeline integration — spawn/hatch still work without llm_config
+# Pipeline integration: spawn/hatch still work without llm_config
 # ---------------------------------------------------------------------------
 
 

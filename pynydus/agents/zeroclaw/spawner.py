@@ -54,7 +54,6 @@ _FLOW_FILES = ("AGENTS.md", "agents.md", "instructions.md", "system_prompt.md", 
 _CONTEXT_FILES = ("USER.md", "user.md", "context.md", "TOOLS.md")
 _STATE_FILES = ("MEMORY.md", "knowledge.md")
 _CONFIG_FILES = ("config.json", "config.yaml", "config.yml", "config.toml")
-_ZEROCLAW_MARKER = ".zeroclaw"
 
 _CATEGORY_LABEL_MAP: dict[str, MemoryLabel] = {
     "core": MemoryLabel.STATE,
@@ -79,18 +78,6 @@ class ZeroClawSpawner:
     """Parse a ZeroClaw project directory."""
 
     FILE_PATTERNS = FILE_PATTERNS
-
-    def detect(self, input_path: Path) -> bool:
-        """Return True if input_path looks like a ZeroClaw project."""
-        if not input_path.is_dir():
-            return False
-        if (input_path / _ZEROCLAW_MARKER).exists():
-            return True
-        has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
-        has_tools = (input_path / "tools").is_dir() or (input_path / "tools.json").exists()
-        has_agents = (input_path / "AGENTS.md").exists()
-        has_memory_db = (input_path / "memory.db").exists()
-        return has_persona or has_tools or has_agents or has_memory_db
 
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Parse pre-redacted file contents into raw skills and memory.
@@ -119,6 +106,13 @@ class ZeroClawSpawner:
 
         ZeroClaw stores MemoryEntry records with category fields
         (Core, Daily, Conversation, Custom).
+
+        Args:
+            db_path: Path to the ``memory.db`` SQLite file.
+            supplemental_files: Additional text files to parse alongside the DB.
+
+        Returns:
+            Skills, memory, MCP configs, and source metadata.
         """
         try:
             conn = sqlite3.connect(str(db_path))
@@ -172,9 +166,9 @@ class ZeroClawSpawner:
 
         return result
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def _parse_skills(self, files: dict[str, str]) -> list[RawSkill]:
         """Parse skills from file contents dict."""

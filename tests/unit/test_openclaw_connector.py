@@ -73,7 +73,7 @@ def _rich_egg():
 
 
 def _rich_egg_with_splits():
-    """Egg with IDENTITY, TOOLS, dated memory — tests file-splitting logic."""
+    """Egg with IDENTITY, TOOLS, dated memory: tests file-splitting logic."""
     from datetime import datetime, timezone
 
     return make_egg(
@@ -147,7 +147,7 @@ def _rich_egg_with_splits():
 
 
 def _cross_platform_egg():
-    """Egg from a non-OpenClaw source (e.g. Letta) — no OpenClaw source_store hints."""
+    """Egg from a non-OpenClaw source (e.g. Letta): no OpenClaw source_store hints."""
     return make_egg(
         skills=[SkillRecord(id="s1", name="analyze", agent_type="letta", content="Analyze data.")],
         memory=[

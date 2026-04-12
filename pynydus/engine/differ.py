@@ -14,6 +14,13 @@ def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
     Compares manifest fields, skills, memory, and secrets.
     Records are matched by ``id``. For matched records, individual
     fields are compared. Unmatched records are reported as added/removed.
+
+    Args:
+        egg_a: First Egg (typically the older or baseline side).
+        egg_b: Second Egg (typically the newer side).
+
+    Returns:
+        Report listing manifest changes and per-record diffs.
     """
     manifest_changes = _diff_manifest(egg_a, egg_b)
     entries: list[DiffEntry] = []
@@ -48,7 +55,15 @@ def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
 
 
 def _diff_manifest(egg_a: Egg, egg_b: Egg) -> list[ManifestChange]:
-    """Compare manifest fields (skip created_at — always differs)."""
+    """Compare manifest fields, skipping created_at which always differs.
+
+    Args:
+        egg_a: First Egg (old/left side).
+        egg_b: Second Egg (new/right side).
+
+    Returns:
+        List of changed manifest fields.
+    """
     changes: list[ManifestChange] = []
     fields = [
         "nydus_version",
@@ -83,7 +98,17 @@ def _diff_records(
     bucket: Bucket,
     compare_fields: list[str],
 ) -> list[DiffEntry]:
-    """Generic ID-based record comparison."""
+    """Match records by ID and report additions, removals, and field changes.
+
+    Args:
+        a_list: Records from the first (old) Egg.
+        b_list: Records from the second (new) Egg.
+        bucket: Which module the records belong to (skill, memory, secret).
+        compare_fields: Attribute names to compare on matched records.
+
+    Returns:
+        Diff entries for every structural difference found.
+    """
     entries: list[DiffEntry] = []
 
     a_by_id: dict[str, BaseModel] = {getattr(r, "id"): r for r in a_list}
@@ -121,7 +146,7 @@ def _diff_records(
             )
         )
 
-    # Modified (in both — compare fields)
+    # Modified (in both: compare fields)
     for rid in sorted(a_ids & b_ids):
         rec_a = a_by_id[rid]
         rec_b = b_by_id[rid]

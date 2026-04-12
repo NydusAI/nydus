@@ -1,4 +1,4 @@
-"""Tests for `nydus inspect --logs` CLI flag."""
+"""CLI ``nydus inspect --logs``: grouped spawn log summary and edge cases."""
 
 from pathlib import Path
 

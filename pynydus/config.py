@@ -2,16 +2,16 @@
 
 LLM (refinement / LLM tiers):
 
-- ``NYDUS_LLM_TYPE`` — ``provider/model`` (e.g. ``anthropic/claude-3-5-haiku-20241022``)
-- ``NYDUS_LLM_API_KEY`` — API key for that tier
+- ``NYDUS_LLM_TYPE``: ``provider/model`` (e.g. ``anthropic/claude-3-5-haiku-20241022``)
+- ``NYDUS_LLM_API_KEY``: API key for that tier
 
 Both must be set together to enable ``NydusConfig.llm``. If only one is set,
 :func:`load_config` raises ``ValueError``.
 
 Nest registry (``push`` / ``pull`` / ``FROM nydus/...``):
 
-- ``NYDUS_REGISTRY_URL`` — base URL of the Nest server (e.g. ``http://localhost:8000``)
-- ``NYDUS_REGISTRY_AUTHOR`` — optional default author for pushes
+- ``NYDUS_REGISTRY_URL``: base URL of the Nest server (e.g. ``http://localhost:8000``)
+- ``NYDUS_REGISTRY_AUTHOR``: optional default author for pushes
 """
 
 from __future__ import annotations
@@ -60,6 +60,11 @@ def load_config() -> NydusConfig:
 
 
 def _llm_from_env() -> LLMTierConfig | None:
+    """Build an LLM tier config from ``NYDUS_LLM_*`` env vars, or ``None`` if unset.
+
+    Raises:
+        ValueError: If only one of type/key is set, or if the type format is invalid.
+    """
     type_str = os.environ.get("NYDUS_LLM_TYPE", "").strip()
     api_key = os.environ.get("NYDUS_LLM_API_KEY")
     has_type = bool(type_str)
@@ -88,6 +93,7 @@ def _llm_from_env() -> LLMTierConfig | None:
 
 
 def _registry_from_env() -> RegistryConfig | None:
+    """Build a registry config from ``NYDUS_REGISTRY_*`` env vars, or ``None`` if unset."""
     url = os.environ.get("NYDUS_REGISTRY_URL", "").strip()
     if not url:
         return None

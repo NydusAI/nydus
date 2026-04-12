@@ -2,7 +2,7 @@
 
 Extensions are mapped to categories so the pipeline can skip binary assets and
 scan the rest as UTF-8 text. ``partition_files`` only distinguishes **ignored**
-from **scannable**; ``structured``, ``markdown``, and ``plain`` labels are for
+from **scannable**. ``structured``, ``markdown``, and ``plain`` labels are for
 tests and future use, not separate scan paths today.
 """
 
@@ -63,7 +63,7 @@ def classify(name: str) -> FileCategory:
 
     Returns:
         ``"ignored"``, ``"structured"``, ``"markdown"``, or ``"plain"``. Only
-        ``"ignored"`` is filtered before scanning in the current pipeline; other
+        ``"ignored"`` is filtered before scanning in the current pipeline. other
         values are treated as scannable.
     """
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
@@ -87,7 +87,7 @@ def partition_files(
 
     Returns:
         A pair ``(scannable, ignored)``. Ignored entries are binary or
-        non-text assets; scannable entries are scanned for secrets/PII.
+        non-text assets. scannable entries are scanned for secrets/PII.
     """
     scannable: dict[str, str] = {}
     ignored: dict[str, str] = {}

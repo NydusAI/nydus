@@ -92,25 +92,6 @@ class PipelineContext:
     spawn_log: list[dict] = field(default_factory=list)
 
 
-def _build_context(
-    config: NydusfileConfig,
-    nydusfile_dir: Path,
-    llm_config: LLMTierConfig | None = None,
-) -> PipelineContext:
-    """Consume a NydusfileConfig into a PipelineContext."""
-    return PipelineContext(
-        nydusfile_dir=nydusfile_dir,
-        sources=config.sources,
-        base_egg=config.base_egg,
-        merge_ops=config.merge_ops,
-        redact=config.redact,
-        excluded_memory_labels=config.excluded_memory_labels,
-        custom_labels=config.custom_labels,
-        source_remove_globs=config.source_remove_globs,
-        llm_config=llm_config,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -127,8 +108,18 @@ def spawn(
     This is the single entry point for spawn: it enforces prerequisites such as
     ``ensure_gitleaks_if_needed`` before any file reads or redaction.
 
-    Returns ``(egg, raw_artifacts, logs)`` — the spawned Egg, redacted source
-    file contents, and pipeline log entries.
+    Args:
+        config: Parsed Nydusfile (sources, FROM, merge ops, redaction flags).
+        nydusfile_dir: Directory containing the Nydusfile (resolves relative paths).
+        llm_config: Optional LLM tier for spawn Step 7 refinement.
+
+    Returns:
+        ``(egg, raw_artifacts, logs)``: the spawned Egg, redacted source file
+        contents, and pipeline log entries (e.g. ``{"spawn_log": [...]}``).
+
+    Raises:
+        NydusfileError: If the Nydusfile is invalid (e.g. multiple SOURCE lines).
+        GitleaksNotFoundError: When redaction requires gitleaks but it is missing.
     """
     nydusfile_dir = Path(nydusfile_dir).resolve()
     ensure_gitleaks_if_needed(config)
@@ -137,7 +128,17 @@ def spawn(
             "Only one SOURCE directive is allowed. Combine inputs under one directory "
             "or use separate Nydusfiles."
         )
-    ctx = _build_context(config, nydusfile_dir, llm_config)
+    ctx = PipelineContext(
+        nydusfile_dir=nydusfile_dir,
+        sources=config.sources,
+        base_egg=config.base_egg,
+        merge_ops=config.merge_ops,
+        redact=config.redact,
+        excluded_memory_labels=config.excluded_memory_labels,
+        custom_labels=config.custom_labels,
+        source_remove_globs=config.source_remove_globs,
+        llm_config=llm_config,
+    )
 
     ctx.spawn_log.append(
         {
@@ -320,6 +321,12 @@ def ensure_gitleaks_if_needed(config: NydusfileConfig) -> None:
     Secret scanning is required when ``REDACT`` is true (the default) and
     at least one ``SOURCE`` directive is present.  FROM-only spawns and
     ``REDACT false`` pipelines skip file-level scanning entirely.
+
+    Args:
+        config: Parsed Nydusfile configuration.
+
+    Raises:
+        GitleaksNotFoundError: When scanning is required but gitleaks is not found.
     """
     if not config.redact or not config.sources:
         return
@@ -339,7 +346,7 @@ def _resolve_base_egg(
 ) -> tuple[EggPartial | None, AgentType | None]:
     """If FROM is present, load and merge the base egg.
 
-    Returns ``(partial, agent_type)`` — partial is the merged base egg,
+    Returns ``(partial, agent_type)``: partial is the merged base egg,
     agent_type is the base egg's manifest agent type.
     """
     if not ctx.base_egg:
@@ -416,27 +423,24 @@ def _pull_registry_egg(ref: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_source_entry_path(path_str: str, nydusfile_dir: Path) -> Path:
-    """Resolve a path from a Nydusfile SOURCE (or similar) entry."""
-    expanded = Path(path_str).expanduser()
-    if expanded.is_absolute():
-        return expanded.resolve()
-    return (nydusfile_dir / path_str).resolve()
-
-
 def _read_source_files(
     ctx: PipelineContext,
 ) -> list[tuple[AgentType, dict[str, str]]]:
     """Read source files into independent per-group dicts.
 
     Returns at most one ``(agent_type, files)`` tuple (at most one SOURCE).
-    Each group's dict has bare filename keys and is independent — no merging
+    Each group's dict has bare filename keys and is independent: no merging
     is performed here.
     """
     groups: list[tuple[AgentType, dict[str, str]]] = []
 
     for src in ctx.sources:
-        resolved = _resolve_source_entry_path(src.path, ctx.nydusfile_dir)
+        expanded = Path(src.path).expanduser()
+        resolved = (
+            expanded.resolve()
+            if expanded.is_absolute()
+            else (ctx.nydusfile_dir / src.path).resolve()
+        )
         at = AgentType(src.agent_type)
         spawner = _get_spawner(at)
         patterns = getattr(spawner, "FILE_PATTERNS", ["*.md", "*.json", "*.yaml", "*.yml", "*.txt"])
@@ -602,28 +606,19 @@ def _redact_pii(
 # ---------------------------------------------------------------------------
 
 
-def _instantiate_spawner(module: str, class_name: str):  # noqa: ANN202
-    mod = __import__(module, fromlist=[class_name])
-    return getattr(mod, class_name)()
-
-
 def _get_spawner(agent_type: AgentType):  # noqa: ANN202
     """Return the spawner connector for the given agent type."""
-    _SPAWNERS = {
-        AgentType.OPENCLAW: lambda: _instantiate_spawner(
-            "pynydus.agents.openclaw.spawner", "OpenClawSpawner"
-        ),
-        AgentType.LETTA: lambda: _instantiate_spawner(
-            "pynydus.agents.letta.spawner", "LettaSpawner"
-        ),
-        AgentType.ZEROCLAW: lambda: _instantiate_spawner(
-            "pynydus.agents.zeroclaw.spawner", "ZeroClawSpawner"
-        ),
+    _SPAWNERS: dict[AgentType, tuple[str, str]] = {
+        AgentType.OPENCLAW: ("pynydus.agents.openclaw.spawner", "OpenClawSpawner"),
+        AgentType.LETTA: ("pynydus.agents.letta.spawner", "LettaSpawner"),
+        AgentType.ZEROCLAW: ("pynydus.agents.zeroclaw.spawner", "ZeroClawSpawner"),
     }
-    factory = _SPAWNERS.get(agent_type)
-    if factory is None:
+    entry = _SPAWNERS.get(agent_type)
+    if entry is None:
         raise ConnectorError(f"No spawner available for: {agent_type}")
-    return factory()
+    module, class_name = entry
+    mod = __import__(module, fromlist=[class_name])
+    return getattr(mod, class_name)()
 
 
 def _parse_sources(
@@ -632,7 +627,7 @@ def _parse_sources(
 ) -> ParseResult:
     """Parse redacted files, dispatching each source group to its own spawner.
 
-    Each group's dict is already redacted — it is passed directly to the
+    Each group's dict is already redacted: it is passed directly to the
     spawner with bare filename keys.
     """
     combined = ParseResult()
@@ -824,13 +819,6 @@ def _drop_memory_records_with_excluded_labels(
 # ---------------------------------------------------------------------------
 
 
-def _compute_min_version(ctx: PipelineContext) -> str:
-    """Determine the minimum Nydus version required to open this egg."""
-    if ctx.base_egg:
-        return "0.2.0"
-    return "0.1.0"
-
-
 def _package_egg(
     ctx: PipelineContext,
     skills: SkillsModule,
@@ -847,7 +835,7 @@ def _package_egg(
 
     manifest = Manifest(
         nydus_version=pynydus.__version__,
-        min_nydus_version=_compute_min_version(ctx),
+        min_nydus_version="0.2.0" if ctx.base_egg else "0.1.0",
         egg_version=pynydus.EGG_SPEC_VERSION,
         created_at=datetime.now(UTC),
         agent_type=ctx.agent_type,

@@ -1,1 +1,1 @@
-"""Agent connectors — one sub-package per framework (spawner + hatcher)."""
+"""Agent connectors: one sub-package per framework (spawner + hatcher)."""

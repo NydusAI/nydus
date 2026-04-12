@@ -20,7 +20,7 @@ new database secret, without touching the original source files.
 - `nydus diff` shows exactly what ADD introduced: +1 skill, +2 memory,
   +1 secret
 - The extend step uses FROM-only (no SOURCE), so it works purely from
-  the `.egg` artifact — no access to the original workspace needed
+  the `.egg` artifact: no access to the original workspace needed
 
 ## Rebuild vs Passthrough
 

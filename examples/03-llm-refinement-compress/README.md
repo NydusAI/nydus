@@ -24,7 +24,7 @@ With them set, it also spawns `compressed.egg` and runs a diff.
 - `nydus diff` shows memory record count decreasing (deduplication of
   overlapping SOUL.md/AGENTS.md instructions + weekly memory overlap)
 - Skill content is shorter (tightened prose, same capabilities)
-- Word count comparison shows 30–50% reduction
+- Word count comparison shows 30 - 50% reduction
 - Meaning is preserved (no dropped capabilities or knowledge)
 
 **Note:** Compression is non-deterministic. The LLM produces different

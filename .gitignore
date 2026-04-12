@@ -35,7 +35,7 @@ coverage_html/
 docs/_build/
 docs/apidocs/
 
-# Eggs (Nydus artifacts — don't commit test eggs)
+# Eggs (Nydus artifacts - don't commit test eggs)
 *.egg
 
 # Agent project secrets (OpenClaw/Letta source trees), not Nydus global config

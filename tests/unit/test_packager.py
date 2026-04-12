@@ -1,4 +1,4 @@
-"""Tests for Egg packager (save/load)."""
+"""``.egg`` ZIP layout: save/load round-trip, raw/, spawn_log, signing hooks."""
 
 import json
 import zipfile

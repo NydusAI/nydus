@@ -1,7 +1,7 @@
 """Integration tests: 3x3 agent portability matrix.
 
 Each test: spawn from source fixtures -> save -> load -> hatch to target -> assert.
-Marked ``@pytest.mark.integration`` — requires ``gitleaks`` on PATH.
+Marked ``@pytest.mark.integration``: requires ``gitleaks`` on PATH.
 """
 
 from __future__ import annotations

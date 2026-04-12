@@ -1,6 +1,6 @@
 # Audience
 
-Acme Corp customers. Mostly B2B SaaS buyers — technical PMs,
+Acme Corp customers. Mostly B2B SaaS buyers: technical PMs,
 developers, and small team leads. They know their tools. Don't
 over-explain product basics unless they ask.
 

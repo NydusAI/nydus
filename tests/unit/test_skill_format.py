@@ -1,4 +1,4 @@
-"""Tests for Agent Skills SKILL.md format — parse, render, slug, conversions."""
+"""Tests for Agent Skills SKILL.md format: parse, render, slug, conversions."""
 
 from __future__ import annotations
 

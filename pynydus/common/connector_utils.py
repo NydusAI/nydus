@@ -100,7 +100,7 @@ def parse_timestamp(val: object) -> datetime | None:
         val: ISO-like string, Unix epoch seconds, or ``None``.
 
     Returns:
-        Aware or naive :class:`~datetime.datetime` on success; ``None`` if
+        Aware or naive :class:`~datetime.datetime` on success. ``None`` if
         *val* is ``None`` or cannot be parsed.
     """
     if val is None:

@@ -286,7 +286,7 @@ class TestLettaParseAF:
         assert any("research assistant" in m.text for m in flow)
 
     def test_custom_tools_only(self, spawner):
-        """Only custom tools (with source_code) become skills; built-ins are skipped."""
+        """Only custom tools (with source_code) become skills. built-ins are skipped."""
         af = _make_af_fixture()
         result = spawner.parse({"agent.af": json.dumps(af)})
         skill_names = {s.name for s in result.skills}
@@ -398,23 +398,6 @@ class TestLettaParseDB:
         result = spawner.parse_db(db_path)
         assert len(result.memory) >= 3
         assert len(result.skills) >= 1
-
-
-class TestLettaDetect:
-    def test_marker_dir(self, tmp_path: Path, spawner):
-        (tmp_path / ".letta").mkdir()
-        assert spawner.detect(tmp_path) is True
-
-    def test_af_file(self, tmp_path: Path, spawner):
-        af = _make_af_fixture()
-        af_path = tmp_path / "agent.af"
-        af_path.write_text(json.dumps(af))
-        assert spawner.detect(af_path) is True
-
-    def test_af_in_dir(self, tmp_path: Path, spawner):
-        af = _make_af_fixture()
-        (tmp_path / "agent.af").write_text(json.dumps(af))
-        assert spawner.detect(tmp_path) is True
 
 
 class TestLettaRender:

@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from pynydus.common.enums import (  # noqa: F401 – re-exported for convenience
+from pynydus.common.enums import (  # noqa: F401  # re-exported for convenience
     AgentType,
     Bucket,
     DiffChange,
@@ -162,7 +162,11 @@ class Egg(BaseModel):
     """Embedded Nydusfile text when present in the archive (ZIP ``Nydusfile``)."""
 
     def inspect_secrets(self) -> list[dict]:
-        """Return a summary of all secret placeholders and their occurrences."""
+        """Return a summary of all secret placeholders and their occurrences.
+
+        Returns:
+            List of dicts with placeholder, name, kind, required, and occurrences.
+        """
         return [
             {
                 "placeholder": s.placeholder,
@@ -204,7 +208,7 @@ class EggPartial(BaseModel):
     raw_artifacts: dict[str, str] = Field(default_factory=dict)
     source_metadata: dict[str, str] = Field(default_factory=dict)
 
-    # Pipeline log — single list of typed events, packed into logs/spawn_log.json
+    # Pipeline log: single list of typed events, packed into logs/spawn_log.json
     spawn_log: list[dict] = Field(default_factory=list)
 
 

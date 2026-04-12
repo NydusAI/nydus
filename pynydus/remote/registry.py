@@ -1,4 +1,4 @@
-"""Nest registry client — push/pull eggs via HTTP.
+"""Nest registry client: push/pull eggs via HTTP.
 
 Communicates with a Nest registry server (FastAPI) to publish and retrieve
 eggs. Used by both the SDK (``Nydus.push``/``Nydus.pull``) and the CLI
@@ -40,14 +40,13 @@ class NestClient:
             author: Default author name for pushes when not overridden.
             timeout: Request timeout in seconds.
         """
-        # Strip trailing slash for clean URL joining
         self.url = url.rstrip("/")
         self.author = author
         self.timeout = timeout
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Auth
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def _auth_headers(self) -> dict[str, str]:
         """Return Authorization header if a stored token exists."""
@@ -59,7 +58,15 @@ class NestClient:
     def register(self, username: str, password: str) -> dict[str, Any]:
         """Register a new account on the Nest registry.
 
-        Returns the server's response body on success.
+        Args:
+            username: Desired username.
+            password: Password for the new account.
+
+        Returns:
+            Server response body on success.
+
+        Raises:
+            RegistryError: On connection failure, duplicate username, or HTTP error.
         """
         try:
             response = httpx.post(
@@ -81,7 +88,15 @@ class NestClient:
     def login(self, username: str, password: str) -> str:
         """Authenticate and store the returned JWT token.
 
-        Returns the token string on success.
+        Args:
+            username: Registry username.
+            password: Password.
+
+        Returns:
+            JWT token string.
+
+        Raises:
+            RegistryError: On invalid credentials, connection failure, or HTTP error.
         """
         try:
             response = httpx.post(
@@ -117,9 +132,9 @@ class NestClient:
             logger.info("Logged out from %s", self.url)
         return removed
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Push / Pull / List
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def push(
         self,
@@ -206,11 +221,9 @@ class NestClient:
             detail = _extract_detail(response)
             raise RegistryError(f"Pull failed (HTTP {response.status_code}): {detail}")
 
-        # Write to disk
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(response.content)
 
-        # Verify SHA256 if header present
         sha256_header = response.headers.get("x-egg-sha256")
         if sha256_header:
             import hashlib

@@ -49,7 +49,9 @@ class TestSpawn:
     @patch("pynydus.engine.pipeline.spawn")
     @patch("pynydus.engine.nydusfile.resolve_nydusfile")
     @patch("pynydus.engine.nydusfile.parse_file")
-    def test_auto_resolve(self, mock_parse, mock_resolve, mock_spawn, nydus, tmp_path):
+    def test_discovers_nydusfile_in_cwd(
+        self, mock_parse, mock_resolve, mock_spawn, nydus, tmp_path
+    ):
         mock_resolve.return_value = tmp_path / "Nydusfile"
         from pynydus.engine.nydusfile import NydusfileConfig, SourceDirective
 

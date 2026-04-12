@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -29,8 +30,23 @@ from pynydus.llm import LLMTierConfig, create_completion
 
 logger = logging.getLogger(__name__)
 
+REFINEMENT_RETRY_LIMIT = 3
+
+_PLACEHOLDER_RE = re.compile(r"\{\{(?:SECRET|PII)_\d+\}\}")
+
+
+def _extract_placeholders(text: str) -> set[str]:
+    """Return all ``{{SECRET_NNN}}`` / ``{{PII_NNN}}`` tokens in *text*."""
+    return set(_PLACEHOLDER_RE.findall(text))
+
+
+def _find_missing_placeholders(original: str, new: str) -> set[str]:
+    """Tokens present in *original* but absent from *new*."""
+    return _extract_placeholders(original) - _extract_placeholders(new)
+
+
 # ---------------------------------------------------------------------------
-# Response models — structured output schemas for Instructor
+# Response models: structured output schemas for Instructor
 # ---------------------------------------------------------------------------
 
 
@@ -109,7 +125,10 @@ preserving all factual content.
 5. For merged records, list ALL original IDs in original_ids. \
 For records kept as-is, list just the one ID.
 6. Never invent new information. Only condense what exists.
-7. Preserve any placeholder tokens like {{SECRET_001}} or {{PII_001}} exactly as-is."""
+7. CRITICAL: NEVER remove, rewrite, paraphrase, or substitute redaction placeholder \
+tokens ({{SECRET_NNN}} or {{PII_NNN}}). Every such token that appears in the input \
+MUST appear character-for-character in your output. If you are unsure whether to \
+keep a token, keep it."""
 
 _SKILL_SYSTEM_PROMPT = """\
 You are a skill cleanup engine for an AI agent migration system.
@@ -120,7 +139,10 @@ make it a clear human-readable title.
 normalize markdown heading levels, ensure code blocks are properly fenced.
 3. Do NOT remove skills. Return exactly one output per input skill.
 4. Do NOT change the semantic meaning of any skill content.
-5. Preserve any placeholder tokens like {{SECRET_001}} or {{PII_001}} exactly as-is."""
+5. CRITICAL: NEVER remove, rewrite, paraphrase, or substitute redaction placeholder \
+tokens ({{SECRET_NNN}} or {{PII_NNN}}). Every such token that appears in the input \
+MUST appear character-for-character in your output. If you are unsure whether to \
+keep a token, keep it."""
 
 _HATCH_SYSTEM_PROMPT = """\
 You are a cross-platform adaptation engine for an AI agent migration system.
@@ -138,7 +160,10 @@ Target platform specification:
 Adaptation rules:
 1. Adjust tone and structure to match target platform idioms.
 2. Do NOT alter factual content or the agent's personality/knowledge.
-3. Do NOT modify secret placeholders like {{SECRET_001}} or {{PII_001}}.
+3. CRITICAL: NEVER remove, rewrite, paraphrase, or substitute redaction placeholder \
+tokens ({{SECRET_NNN}} or {{PII_NNN}}). Every such token that appears in an input \
+file MUST appear character-for-character in your output for that file. If you are \
+unsure whether to keep a token, keep it.
 4. Only return files that you actually changed. If a file needs no adaptation, omit it."""
 
 _HATCH_POLISH_PROMPT = """\
@@ -155,7 +180,10 @@ Polishing rules:
 2. Improve clarity and readability without changing meaning.
 3. Ensure the output follows {target_type} conventions precisely.
 4. Do NOT alter factual content or the agent's personality/knowledge.
-5. Do NOT modify secret placeholders like {{SECRET_001}} or {{PII_001}}.
+5. CRITICAL: NEVER remove, rewrite, paraphrase, or substitute redaction placeholder \
+tokens ({{SECRET_NNN}} or {{PII_NNN}}). Every such token that appears in an input \
+file MUST appear character-for-character in your output for that file. If you are \
+unsure whether to keep a token, keep it.
 6. Only return files that you actually changed. If a file needs no polishing, omit it."""
 
 
@@ -184,7 +212,16 @@ def refine_skills(
     llm_config: LLMTierConfig,
     spawn_log: list[dict] | None = None,
 ) -> SkillsModule:
-    """Standalone skill refinement — delegates to _refine_skills via EggPartial."""
+    """Clean up skill names and formatting via the configured LLM tier.
+
+    Args:
+        skills: Module containing skill records to refine.
+        llm_config: LLM provider, model, and API key.
+        spawn_log: If set, refinement log entries are appended here.
+
+    Returns:
+        Updated SkillsModule with cleaned names and formatting.
+    """
     from pynydus.api.schemas import MemoryModule
 
     partial = EggPartial(skills=skills, memory=MemoryModule())
@@ -199,7 +236,16 @@ def refine_memory(
     llm_config: LLMTierConfig,
     spawn_log: list[dict] | None = None,
 ) -> MemoryModule:
-    """Standalone memory refinement — delegates to _refine_memory via EggPartial."""
+    """Deduplicate and summarize memory records via the configured LLM tier.
+
+    Args:
+        memory: Module containing memory records to refine.
+        llm_config: LLM provider, model, and API key.
+        spawn_log: If set, refinement log entries are appended here.
+
+    Returns:
+        Updated MemoryModule with deduplicated/summarized records.
+    """
     partial = EggPartial(skills=SkillsModule(), memory=memory)
     partial = _refine_memory(partial, llm_config)
     if spawn_log is not None:
@@ -208,7 +254,15 @@ def refine_memory(
 
 
 def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial:
-    """Deduplicate and summarize memory records via LLM."""
+    """Deduplicate and summarize memory records via LLM.
+
+    Args:
+        partial: EggPartial whose memory module will be refined in place.
+        llm_config: LLM provider, model, and API key.
+
+    Returns:
+        The same EggPartial with its memory module updated.
+    """
     records = partial.memory.memory
     lookup: dict[str, MemoryRecord] = {r.id: r for r in records}
 
@@ -285,10 +339,32 @@ def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
                 }
             )
 
+        original_texts = [lookup[oid].text for oid in refined.original_ids if oid in lookup]
+        required_placeholders: set[str] = set()
+        for ot in original_texts:
+            required_placeholders |= _extract_placeholders(ot)
+        missing = required_placeholders - _extract_placeholders(refined.text)
+
+        safe_text = refined.text
+        if missing:
+            safe_text = source_record.text
+            logger.warning(
+                "Memory record %s dropped placeholders %s. Keeping original text",
+                record_id,
+                sorted(missing),
+            )
+            partial.spawn_log.append(
+                {
+                    "type": "memory_placeholder_revert",
+                    "record_id": record_id,
+                    "missing_placeholders": sorted(missing),
+                }
+            )
+
         new_record = source_record.model_copy(
             update={
                 "id": record_id,
-                "text": refined.text,
+                "text": safe_text,
                 "label": refined.label or source_record.label,
             }
         )
@@ -308,7 +384,15 @@ def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
 
 
 def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial:
-    """Clean up skill names and formatting via LLM."""
+    """Clean up skill names and formatting via LLM.
+
+    Args:
+        partial: EggPartial whose skills module will be refined in place.
+        llm_config: LLM provider, model, and API key.
+
+    Returns:
+        The same EggPartial with its skills module updated.
+    """
     skills = partial.skills.skills
     lookup: dict[str, SkillRecord] = {s.id: s for s in skills}
 
@@ -348,6 +432,23 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
             logger.warning("Refined skill references unknown ID %s, skipping", refined.original_id)
             continue
 
+        missing = _find_missing_placeholders(original.content, refined.content)
+        safe_content = refined.content
+        if missing:
+            safe_content = original.content
+            logger.warning(
+                "Skill %s dropped placeholders %s. Keeping original content",
+                refined.original_id,
+                sorted(missing),
+            )
+            partial.spawn_log.append(
+                {
+                    "type": "skill_placeholder_revert",
+                    "skill_id": refined.original_id,
+                    "missing_placeholders": sorted(missing),
+                }
+            )
+
         partial.spawn_log.append(
             {
                 "type": "skill_refined",
@@ -355,14 +456,14 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
                 "name_changed": refined.name != original.name,
                 "old_name": original.name,
                 "new_name": refined.name,
-                "content_changed": refined.content != original.content,
+                "content_changed": safe_content != original.content,
             }
         )
 
         new_skill = original.model_copy(
             update={
                 "name": refined.name,
-                "content": refined.content,
+                "content": safe_content,
             }
         )
         new_skills.append(new_skill)
@@ -380,18 +481,8 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
 
 
 # ---------------------------------------------------------------------------
-# refine_hatch — hatching Step 3
+# refine_hatch: hatching Step 3
 # ---------------------------------------------------------------------------
-
-
-def _serialize_spawn_log(spawn_log: list[dict]) -> str:
-    """Serialize the full spawn log as JSON for inclusion in the hatch LLM prompt.
-
-    Returns the complete, unfiltered log so the LLM can decide what is relevant.
-    """
-    if not spawn_log:
-        return ""
-    return json.dumps(spawn_log, indent=2, default=str)
 
 
 def refine_hatch(
@@ -403,15 +494,24 @@ def refine_hatch(
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Step 3: LLM refinement during hatching.
+    """Adapt or polish reconstructed files during hatching (Step 3) via LLM.
 
-    Operates on a file dict (filename -> content) and returns the
-    updated dict.  No disk I/O — the pipeline handles writing.
+    Operates on a filename-to-content mapping with placeholders only. no disk I/O.
+    Retries when redaction placeholders are dropped. on persistent failure, leaves
+    affected paths unchanged.
 
-    Uses the configured LLM tier to adapt or polish reconstructed files for the
-    target platform's conventions.
+    Args:
+        file_dict: Reconstructed files (paths relative to output root).
+        egg: Egg being hatched (manifest, secrets metadata, agent type).
+        llm_config: LLM provider, model, and API key.
+        log: If set, hatch log entries (warnings, reverts) are appended here.
+        spawn_log: Optional spawn pipeline log forwarded into the LLM context.
+        raw_artifacts: Optional redacted ``raw/`` snapshot for extra LLM context.
 
-    If the LLM call fails, the original file dict is returned unchanged.
+    Returns:
+        Updated file dict (unchanged keys omitted from LLM output stay as in
+        ``file_dict``).
+
     """
     if not file_dict:
         return file_dict
@@ -440,7 +540,8 @@ def refine_hatch(
             target_spec=target_spec,
         )
 
-    serialized_log = _serialize_spawn_log(spawn_log or [])
+    log_entries = spawn_log or []
+    serialized_log = json.dumps(log_entries, indent=2, default=str) if log_entries else ""
     context_block = ""
     if serialized_log:
         context_block = f"\nSpawn log:\n{serialized_log}\n\n"
@@ -458,7 +559,7 @@ def refine_hatch(
         for s in egg.secrets.secrets:
             secret_lines.append(
                 f"  - {s.placeholder}: {s.kind.value}, {s.name}"
-                + (f" — {s.description}" if s.description else "")
+                + (f" ({s.description})" if s.description else "")
             )
         secrets_block = "Redaction placeholders in this egg:\n" + "\n".join(secret_lines) + "\n\n"
 
@@ -481,25 +582,78 @@ def refine_hatch(
         },
     ]
 
-    llm_result = create_completion(
-        llm_config,
-        messages=messages,
-        response_model=AdaptedFilesOutput,
-        log=log,
-    )
-    if llm_result is None:
-        return file_dict
-
     valid_files = set(file_dict)
+    last_adapted: list[AdaptedFile] = []
+    last_warnings: list[str] = []
+
+    for attempt in range(REFINEMENT_RETRY_LIMIT):
+        llm_result = create_completion(
+            llm_config,
+            messages=messages,
+            response_model=AdaptedFilesOutput,
+            log=log,
+        )
+        if llm_result is None:
+            return file_dict
+
+        last_adapted = [a for a in llm_result.files if a.path in valid_files]
+        last_warnings = list(llm_result.warnings)
+
+        violations: dict[str, set[str]] = {}
+        for adapted in last_adapted:
+            missing = _find_missing_placeholders(file_dict[adapted.path], adapted.content)
+            if missing:
+                violations[adapted.path] = missing
+
+        if not violations:
+            break
+
+        if attempt < REFINEMENT_RETRY_LIMIT - 1:
+            violation_lines = " | ".join(
+                f"{path}: {sorted(tokens)}" for path, tokens in violations.items()
+            )
+            logger.warning(
+                "Hatch refinement attempt %d/%d dropped placeholders: %s",
+                attempt + 1,
+                REFINEMENT_RETRY_LIMIT,
+                violation_lines,
+            )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous output dropped required redaction placeholders. "
+                        f"Missing tokens: {violation_lines}. "
+                        "Retry and preserve every {{SECRET_NNN}} / {{PII_NNN}} token "
+                        "character-for-character."
+                    ),
+                }
+            )
+
     result = dict(file_dict)
-    for adapted in llm_result.files:
-        if adapted.path not in valid_files:
-            logger.warning("LLM returned unknown file path %s, ignoring", adapted.path)
-            continue
-        result[adapted.path] = adapted.content
+    for adapted in last_adapted:
+        missing = _find_missing_placeholders(file_dict[adapted.path], adapted.content)
+        if missing:
+            logger.warning(
+                "Reverting %s after %d attempts: missing %s",
+                adapted.path,
+                REFINEMENT_RETRY_LIMIT,
+                sorted(missing),
+            )
+            if log is not None:
+                log.append(
+                    {
+                        "type": "placeholder_revert",
+                        "path": adapted.path,
+                        "missing_placeholders": sorted(missing),
+                        "attempts": REFINEMENT_RETRY_LIMIT,
+                    }
+                )
+        else:
+            result[adapted.path] = adapted.content
 
     if log is not None:
-        for warning in llm_result.warnings:
+        for warning in last_warnings:
             log.append({"type": "warning", "message": warning})
 
     return result

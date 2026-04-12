@@ -1,4 +1,4 @@
-"""Tests for pynydus.engine.nydusfile — DSL parser and static verifier."""
+"""Tests for pynydus.engine.nydusfile: DSL parser and static verifier."""
 
 from pathlib import Path
 
@@ -10,7 +10,7 @@ from pynydus.engine.nydusfile import parse, resolve_nydusfile
 
 class TestBasicParsing:
     def test_minimal(self):
-        """SOURCE-only; omitted REDACT defaults to true."""
+        """SOURCE-only. omitted REDACT defaults to true."""
         cfg = parse("SOURCE openclaw ./src")
         assert cfg.redact is True
 
@@ -326,30 +326,6 @@ class TestResolveNydusfile:
         result = resolve_nydusfile(tmp_path)
         assert result == nf
 
-    def test_generates_default_for_openclaw(self, tmp_path: Path):
-        # SKILL.md matches OpenClaw only; SOUL.md would also match ZeroClaw (shared persona files).
-        (tmp_path / "SKILL.md").write_text("hello")
-        result = resolve_nydusfile(tmp_path)
-        assert result.exists()
-        cfg = parse(result.read_text())
-        assert cfg.sources[0].agent_type == "openclaw"
-
-    def test_generates_default_for_letta(self, tmp_path: Path):
-        import json
-
-        (tmp_path / "agent_state.json").write_text(json.dumps({"system": "hi"}))
-        result = resolve_nydusfile(tmp_path)
-        assert result.exists()
-        cfg = parse(result.read_text())
-        assert cfg.sources[0].agent_type == "letta"
-
-    def test_ambiguous_layout_raises(self, tmp_path: Path):
-        """SOUL.md + AGENTS.md match both OpenClaw and ZeroClaw heuristics."""
-        (tmp_path / "SOUL.md").write_text("x")
-        (tmp_path / "AGENTS.md").write_text("y")
-        with pytest.raises(NydusfileError, match="Ambiguous agent layout"):
-            resolve_nydusfile(tmp_path)
-
-    def test_unknown_dir_raises(self, tmp_path: Path):
-        with pytest.raises(NydusfileError, match="Cannot auto-detect"):
+    def test_missing_nydusfile_raises(self, tmp_path: Path):
+        with pytest.raises(NydusfileError, match="No Nydusfile found"):
             resolve_nydusfile(tmp_path)

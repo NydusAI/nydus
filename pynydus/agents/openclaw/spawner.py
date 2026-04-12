@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 
 from pynydus.api.raw_types import (
     ParseResult,
@@ -47,16 +46,6 @@ class OpenClawSpawner:
 
     FILE_PATTERNS = FILE_PATTERNS
 
-    def detect(self, input_path: Path) -> bool:
-        """Return True if input_path looks like an OpenClaw project."""
-        if not input_path.is_dir():
-            return False
-        has_persona = any((input_path / f).exists() for f in _PERSONA_FILES)
-        has_skill = (
-            any((input_path / f).exists() for f in _SKILL_FILES) or (input_path / "skills").is_dir()
-        )
-        return has_persona or has_skill
-
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Parse pre-redacted file contents into raw skills and memory.
 
@@ -71,9 +60,9 @@ class OpenClawSpawner:
         mcp_configs = self._parse_mcp_configs(files)
         return ParseResult(skills=skills, memory=memories, mcp_configs=mcp_configs)
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def _parse_skills(self, files: dict[str, str]) -> list[RawSkill]:
         """Parse skills from file contents dict."""

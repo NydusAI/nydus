@@ -143,7 +143,7 @@ class TestResponseModels:
 
 
 # ---------------------------------------------------------------------------
-# refine_memory — memory deduplication
+# refine_memory: memory deduplication
 # ---------------------------------------------------------------------------
 
 
@@ -239,7 +239,7 @@ class TestRefineMemory:
 
 
 # ---------------------------------------------------------------------------
-# refine_skills — skill cleanup
+# refine_skills: skill cleanup
 # ---------------------------------------------------------------------------
 
 
@@ -504,3 +504,158 @@ class TestTierSelection:
 
         call_tier = mock_completion.call_args[0][0]
         assert call_tier is llm_config
+
+
+# ---------------------------------------------------------------------------
+# Placeholder safety guardrails
+# ---------------------------------------------------------------------------
+
+
+class TestHatchPlaceholderRetry:
+    @patch("pynydus.engine.refinement.create_completion")
+    def test_retries_then_succeeds(
+        self,
+        mock_completion: MagicMock,
+        minimal_egg: Egg,
+        llm_config: LLMTierConfig,
+    ):
+        """First attempt drops a placeholder. second attempt preserves it."""
+        original = "Contact {{PII_001}} or use {{SECRET_001}}."
+        bad = AdaptedFilesOutput(
+            files=[AdaptedFile(path="USER.md", content="Contact someone or use the key.")]
+        )
+        good = AdaptedFilesOutput(
+            files=[
+                AdaptedFile(
+                    path="USER.md",
+                    content="Contact {{PII_001}} or use {{SECRET_001}}.",
+                )
+            ]
+        )
+        mock_completion.side_effect = [bad, good]
+
+        result = refine_hatch({"USER.md": original}, minimal_egg, llm_config)
+
+        assert "{{PII_001}}" in result["USER.md"]
+        assert "{{SECRET_001}}" in result["USER.md"]
+        assert mock_completion.call_count == 2
+
+    @patch("pynydus.engine.refinement.create_completion")
+    def test_exhausts_retries_reverts(
+        self,
+        mock_completion: MagicMock,
+        minimal_egg: Egg,
+        llm_config: LLMTierConfig,
+    ):
+        """All attempts drop placeholders. original content is preserved."""
+        original = "API key is {{SECRET_001}}."
+        bad = AdaptedFilesOutput(
+            files=[AdaptedFile(path="USER.md", content="API key is stored securely.")]
+        )
+        mock_completion.return_value = bad
+
+        log: list[dict] = []
+        result = refine_hatch(
+            {"USER.md": original},
+            minimal_egg,
+            llm_config,
+            log=log,
+        )
+
+        assert result["USER.md"] == original
+        assert mock_completion.call_count == 3
+        revert_entries = [e for e in log if e["type"] == "placeholder_revert"]
+        assert len(revert_entries) == 1
+        assert "{{SECRET_001}}" in revert_entries[0]["missing_placeholders"]
+
+    @patch("pynydus.engine.refinement.create_completion")
+    def test_partial_violation_keeps_good_files(
+        self,
+        mock_completion: MagicMock,
+        minimal_egg: Egg,
+        llm_config: LLMTierConfig,
+    ):
+        """One file OK, one drops placeholders. only the bad one reverts."""
+        files = {
+            "SOUL.md": "I am helpful.",
+            "USER.md": "Name: {{PII_001}}, key: {{SECRET_001}}.",
+        }
+        mock_completion.return_value = AdaptedFilesOutput(
+            files=[
+                AdaptedFile(path="SOUL.md", content="I am a helpful assistant."),
+                AdaptedFile(path="USER.md", content="Name and key redacted."),
+            ]
+        )
+
+        result = refine_hatch(files, minimal_egg, llm_config)
+
+        assert result["SOUL.md"] == "I am a helpful assistant."
+        assert result["USER.md"] == files["USER.md"]
+
+
+class TestMemoryPlaceholderRevert:
+    @patch("pynydus.engine.refinement.create_completion")
+    def test_reverts_when_placeholders_dropped(
+        self,
+        mock_completion: MagicMock,
+        llm_config: LLMTierConfig,
+    ):
+        original_text = "Contact {{PII_001}} at {{SECRET_001}}."
+        memory = MemoryModule(
+            memory=[
+                MemoryRecord(
+                    id="mem_001",
+                    text=original_text,
+                    label=MemoryLabel.STATE,
+                    agent_type="openclaw",
+                    source_store="MEMORY.md",
+                ),
+            ]
+        )
+        mock_completion.return_value = RefinedMemoryOutput(
+            records=[
+                RefinedMemoryRecord(
+                    original_ids=["mem_001"],
+                    text="Contact the user at their address.",
+                    label=MemoryLabel.STATE,
+                ),
+            ]
+        )
+
+        result = refine_memory(memory, llm_config)
+
+        assert result.memory[0].text == original_text
+
+
+class TestSkillPlaceholderRevert:
+    @patch("pynydus.engine.refinement.create_completion")
+    def test_reverts_when_placeholders_dropped(
+        self,
+        mock_completion: MagicMock,
+        llm_config: LLMTierConfig,
+    ):
+        original_content = "Use header Auth: {{SECRET_001}} and email {{PII_001}}."
+        skills = SkillsModule(
+            skills=[
+                SkillRecord(
+                    id="skill_001",
+                    name="API helper",
+                    agent_type="openclaw",
+                    content=original_content,
+                )
+            ]
+        )
+        mock_completion.return_value = RefinedSkillsOutput(
+            skills=[
+                RefinedSkillRecord(
+                    original_id="skill_001",
+                    name="API Helper",
+                    content="Use the authentication header and email for the account.",
+                ),
+            ]
+        )
+
+        result = refine_skills(skills, llm_config)
+
+        assert result.skills[0].content == original_content
+        assert result.skills[0].name == "API Helper"

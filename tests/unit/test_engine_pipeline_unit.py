@@ -1,7 +1,7 @@
 """Unit tests for the spawn pipeline (engine/pipeline.py).
 
-Tests assert on Egg *output* — what fields are populated, what content
-survives — rather than checking whether mocks were called.
+Tests assert on Egg *output*: what fields are populated, what content
+survives: rather than checking whether mocks were called.
 """
 
 from __future__ import annotations

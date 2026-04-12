@@ -1,11 +1,15 @@
 # Letta Agent Specification
 
-A Letta agent is defined by a `.af` AgentFile — Letta's open standard for
+A Letta agent is defined by a `.af` AgentFile: Letta's open standard for
 serializing stateful agents into a single portable JSON file.
 
-Reference: <https://docs.letta.com/guides/core-concepts/agent-file/>
+References:
 
-## AgentFile (.af) — Canonical Format
+- <https://docs.letta.com/guides/core-concepts/agent-file/>: AgentFile concept guide
+- <https://github.com/letta-ai/letta/blob/main/letta/schemas/agent_file.py>: AgentFileSchema source
+- <https://github.com/letta-ai/agent-file>: Agent File specification repository
+
+## AgentFile (.af): Canonical Format
 
 The `.af` file follows the `AgentFileSchema` with these top-level keys:
 
@@ -95,4 +99,4 @@ compatibility. These are used only when no `.af` file is present.
 - Python tools should have proper docstrings and type hints for the Letta runtime.
 - Only custom tools (with `source_code`) are extracted as skills. Built-in tools are skipped.
 - Message `content` in `.af` is always a list of `{type, text}` objects, never a plain string.
-- Archival memory is append-only in practice; entries accumulate over the agent's lifetime.
+- Archival memory is append-only in practice. Entries accumulate over the agent's lifetime.

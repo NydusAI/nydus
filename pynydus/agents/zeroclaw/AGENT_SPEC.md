@@ -4,6 +4,13 @@ A ZeroClaw agent workspace is a directory of markdown files, Python
 tools, and TOML configuration that defines the agent's persona,
 instructions, memory, and capabilities.
 
+References:
+
+- <https://www.mintlify.com/zeroclaw-labs/zeroclaw/concepts/architecture>: System architecture
+- <https://www.mintlify.com/zeroclaw-labs/zeroclaw/concepts/tools>: Tool system
+- <https://www.mintlify.com/zeroclaw-labs/zeroclaw/concepts/memory>: Memory system
+- <https://www.mintlify.com/zeroclaw-labs/zeroclaw/concepts/security>: Security architecture
+
 ## Persona Files
 
 | File | Purpose |

@@ -1,4 +1,4 @@
-"""Tests for the Python SDK (client/client.py)."""
+"""Exercise the ``Nydus`` SDK: spawn, hatch, save/load, registry hooks, and errors."""
 
 from __future__ import annotations
 

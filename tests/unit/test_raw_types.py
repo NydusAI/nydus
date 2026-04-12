@@ -1,4 +1,4 @@
-"""Tests for raw_types data models."""
+"""``ParseResult`` / ``RawSkill`` / ``RawMemory`` construction and field defaults."""
 
 from __future__ import annotations
 

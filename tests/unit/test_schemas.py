@@ -1,4 +1,4 @@
-"""Tests for pynydus.api.schemas."""
+"""Tests for Egg, Manifest, and module schema construction, serialization, and defaults."""
 
 from datetime import UTC, datetime
 

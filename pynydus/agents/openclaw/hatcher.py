@@ -47,7 +47,7 @@ def _is_tools_source(rec: MemoryRecord) -> bool:
 def _date_key_from_record(rec: MemoryRecord) -> str | None:
     """Extract a YYYY-MM-DD date key from a state record.
 
-    Prefers the record's timestamp field; falls back to extracting a date
+    Prefers the record's timestamp field. falls back to extracting a date
     from source_store (e.g. ``memory/2026-04-01.md``).
     """
     if rec.timestamp:
@@ -72,11 +72,16 @@ class OpenClawHatcher:
     """Produce a valid OpenClaw project directory from an Egg."""
 
     def render(self, egg: Egg) -> RenderResult:
-        """Render Egg records into target file contents.
+        """Render Egg records into OpenClaw project files.
 
-        Returns a dict of ``filename -> content`` with ``{{SECRET_NNN}}``
-        and ``{{PII_NNN}}`` placeholders intact. The pipeline handles
-        secret substitution and disk I/O.
+        Placeholders (``{{SECRET_NNN}}``, ``{{PII_NNN}}``) are preserved.
+        the pipeline substitutes real values after this step.
+
+        Args:
+            egg: The Egg to render.
+
+        Returns:
+            File dict and any warnings produced during rendering.
         """
         files: dict[str, str] = {}
         warnings: list[str] = []
@@ -163,6 +168,13 @@ class OpenClawHatcher:
 
         .. deprecated::
             Use :meth:`render` instead. The pipeline now handles disk I/O.
+
+        Args:
+            egg: The Egg to hatch.
+            output_dir: Directory where output files are written.
+
+        Returns:
+            Result with list of created files and any warnings.
         """
         result = self.render(egg)
 
@@ -182,7 +194,14 @@ class OpenClawHatcher:
         )
 
     def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated OpenClaw output."""
+        """Validate generated OpenClaw output.
+
+        Args:
+            result: The hatch result to validate.
+
+        Returns:
+            Report with ``valid`` flag and any issues found.
+        """
         issues: list[ValidationIssue] = []
 
         has_soul = "soul.md" in result.files_created

@@ -1,4 +1,4 @@
-"""Tests for pynydus.engine.validator."""
+"""Tests for Egg structural validation: manifest fields, ID uniqueness, and secret integrity."""
 
 from datetime import UTC, datetime
 

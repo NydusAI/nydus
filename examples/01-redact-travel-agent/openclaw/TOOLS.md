@@ -11,6 +11,6 @@
 - Always query with Marriott Bonvoy loyalty program filter
 
 ### Seat Selection
-- No API access — check airline site manually after booking
+- No API access: check airline site manually after booking
 - United: united.com/manageres/mytrips
 - ANA: ana.co.jp/en/us/book-plan/manage

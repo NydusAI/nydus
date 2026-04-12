@@ -36,10 +36,10 @@ class RawMemory(BaseModel):
 
 
 class ParseResult(BaseModel):
-    """Output of ``spawner.parse()`` — structured records from redacted files.
+    """Output of ``spawner.parse()``: structured records from redacted files.
 
     Spawners produce this after receiving pre-redacted file contents.
-    No secrets, no raw_artifacts, no source_type — those are pipeline concerns.
+    No secrets, no raw_artifacts, no source_type: those are pipeline concerns.
     """
 
     skills: list[RawSkill] = Field(default_factory=list)
@@ -50,10 +50,10 @@ class ParseResult(BaseModel):
 
 
 class RenderResult(BaseModel):
-    """Output of ``hatcher.render()`` — target file contents from Egg records.
+    """Output of ``hatcher.render()``: target file contents from Egg records.
 
     Hatchers produce this from an Egg.  Files contain ``{{SECRET_NNN}}``
-    and ``{{PII_NNN}}`` placeholders; the pipeline substitutes real values
+    and ``{{PII_NNN}}`` placeholders. the pipeline substitutes real values
     at the secrets-IN boundary.
     """
 

@@ -12,4 +12,4 @@
 - Refunds: within 30 days, no questions asked.
 - SLA: Enterprise = 1-hour response. All others = 24-hour.
 - Escalation: billing disputes over $500 go to @support-lead.
-- Hours: Mon–Fri 9am–6pm PT. Weekend = async email only.
+- Hours: Mon - Fri 9am - 6pm PT. Weekend = async email only.

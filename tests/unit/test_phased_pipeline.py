@@ -1,4 +1,4 @@
-"""Tests for pipeline helpers and phases."""
+"""Spawn pipeline phases: base resolution, redaction boundaries, and merge steps."""
 
 from __future__ import annotations
 

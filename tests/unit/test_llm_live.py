@@ -56,6 +56,26 @@ class TestLiveMemory:
         assert len(result.memory) < 2, "Near-duplicates should be merged into one record"
         assert any("1991" in m.text for m in result.memory)
 
+    def test_placeholders_survive(self):
+        """Redaction tokens in memory text must survive spawn-time refinement."""
+        tier = _tier()
+        memory = MemoryModule(
+            memory=[
+                MemoryRecord(
+                    id="mem_001",
+                    text="Contact {{PII_001}} or use key {{SECRET_001}} for the API.",
+                    label=MemoryLabel.STATE,
+                    agent_type="openclaw",
+                    source_store="MEMORY.md",
+                ),
+            ]
+        )
+        result = refine_memory(memory, tier)
+        assert len(result.memory) >= 1
+        combined = "\n".join(m.text for m in result.memory)
+        assert "{{PII_001}}" in combined
+        assert "{{SECRET_001}}" in combined
+
 
 @skip_if_no_key
 class TestLiveSkills:
@@ -77,24 +97,55 @@ class TestLiveSkills:
             "LLM should refine the sloppy skill description"
         )
 
+    def test_placeholders_survive(self):
+        """Redaction tokens in skill content must survive spawn-time refinement."""
+        tier = _tier()
+        skills = SkillsModule(
+            skills=[
+                SkillRecord(
+                    id="skill_001",
+                    name="API helper",
+                    agent_type="openclaw",
+                    content=(
+                        "Call the endpoint with header Auth: {{SECRET_001}} "
+                        "and email {{PII_001}} for the account."
+                    ),
+                )
+            ]
+        )
+        result = refine_skills(skills, tier)
+        assert len(result.skills) == 1
+        assert result.skills[0].id == "skill_001"
+        text = result.skills[0].content
+        assert "{{PII_001}}" in text
+        assert "{{SECRET_001}}" in text
+
 
 @skip_if_no_key
 class TestLiveHatch:
     def test_polish(self):
+        """Hatch refinement returns a valid SOUL.md (unchanged is OK).
+
+        ``refine_hatch`` asks the model to return only files it changed. omitting
+        a file leaves the input as-is. Identical output is therefore valid.
+        """
         tier = _tier()
         egg = make_egg()
         files = {"SOUL.md": "I am a helpful AI assistant.\n"}
         result = refine_hatch(files, egg, tier)
         assert "SOUL.md" in result
         assert len(result["SOUL.md"]) > 0
-        assert result["SOUL.md"] != files["SOUL.md"], (
-            "LLM should polish content, not return it unchanged"
-        )
 
     def test_placeholders_survive(self):
+        """Redaction tokens must survive hatch refinement (with retry/fallback)."""
         tier = _tier()
         egg = make_egg()
-        files = {"SOUL.md": "Contact me at {{PII_001}} or {{SECRET_001}}.\n"}
+        files = {
+            "USER.md": (
+                "The user's name is {{PII_001}} and their API key is {{SECRET_001}}. "
+                "They prefer dark mode and use metric units.\n"
+            ),
+        }
         result = refine_hatch(files, egg, tier)
-        assert "{{PII_001}}" in result["SOUL.md"]
-        assert "{{SECRET_001}}" in result["SOUL.md"]
+        assert "{{PII_001}}" in result["USER.md"]
+        assert "{{SECRET_001}}" in result["USER.md"]

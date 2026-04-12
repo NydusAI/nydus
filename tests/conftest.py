@@ -121,7 +121,7 @@ def _wide_terminal(monkeypatch):
 
 @pytest.fixture
 def sample_egg() -> Egg:
-    """A basic Egg with 1 skill, 1 memory record — the most common test shape."""
+    """A basic Egg with 1 skill, 1 memory record: the most common test shape."""
     return make_egg()
 
 

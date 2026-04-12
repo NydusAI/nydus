@@ -1,18 +1,18 @@
-"""Hatching pipeline — transforms an Egg into a target runtime. Spec §13.
+"""Hatching pipeline: transforms an Egg into a target runtime. Spec §13.
 
 Two modes:
-  rebuild     (default) — render from structured egg modules via connector
-  passthrough           — replay redacted raw/ snapshot verbatim
+  rebuild (default): render from structured egg modules via connector
+  passthrough: replay redacted raw/ snapshot verbatim
 
 Pipeline steps:
-    1. Version check — verify min_nydus_version compatibility
-    2. Build file dict — connector.render() (rebuild) or raw snapshot (passthrough)
-    3. LLM polish — adapt/polish on placeholder'd content (no real secrets)
-    4. Secrets IN — substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
+    1. Version check: verify min_nydus_version compatibility
+    2. Build file dict: connector.render() (rebuild) or raw snapshot (passthrough)
+    3. LLM polish: adapt/polish on placeholder'd content (no real secrets)
+    4. Secrets IN: substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
     5. Write to disk
-    6. Hatch log — write hatch_log.json
+    6. Hatch log: write hatch_log.json
 
-The LLM never sees real secrets — only placeholder tokens. Real values are
+The LLM never sees real secrets: only placeholder tokens. Real values are
 injected as the last transformation before writing to disk.
 """
 
@@ -49,14 +49,14 @@ def hatch(
     Args:
         egg: Egg to hatch (typically from :func:`~pynydus.engine.packager.load`).
         target: Destination runtime (``openclaw``, ``zeroclaw``, ``letta``).
-        output_dir: Directory for output files; default ``./agent``.
+        output_dir: Directory for output files. default ``./agent``.
         secrets_path: ``.env`` file for placeholder substitution (secrets IN).
         mode: ``rebuild`` (structured ``render()``) or ``passthrough`` (raw snapshot).
         llm_config: Optional LLM tier for refinement (spawn and hatch).
-        spawn_log: Spawn log entries forwarded to the hatch LLM; defaults to ``egg.spawn_log``.
-        raw_artifacts: Redacted ``raw/`` files; defaults to ``egg.raw_artifacts``.
+        spawn_log: Spawn log entries forwarded to the hatch LLM. defaults to ``egg.spawn_log``.
+        raw_artifacts: Redacted ``raw/`` files. defaults to ``egg.raw_artifacts``.
             If the egg was loaded with ``include_raw=False``, ``egg.raw_artifacts`` is
-            empty; pass the result of :func:`~pynydus.engine.packager.read_raw_artifacts`
+            empty. pass the result of :func:`~pynydus.engine.packager.read_raw_artifacts`
             or reload with ``include_raw=True`` for passthrough.
 
     Returns:
@@ -81,7 +81,7 @@ def hatch(
         if source_at != target:
             raise HatchError(
                 f"Hatch mode 'passthrough' requires the target to match the egg agent type "
-                f"({source_at!r}); got {target!r}. Use mode 'rebuild' for cross-platform hatching."
+                f"({source_at!r}). Got {target!r}. Use mode 'rebuild' for cross-platform hatching."
             )
         if not raw_artifacts:
             raise HatchError(
@@ -280,11 +280,6 @@ def _build_placeholder_map(
 # ---------------------------------------------------------------------------
 
 
-def _parse_version(v: str) -> tuple[int, ...]:
-    """Parse a semver string into a comparable tuple of ints."""
-    return tuple(int(x) for x in v.split("."))
-
-
 def _check_version_compat(egg: Egg) -> None:
     """Reject eggs that require a newer Nydus version than we have."""
     import pynydus
@@ -300,8 +295,8 @@ def _check_version_compat(egg: Egg) -> None:
         return
 
     try:
-        current = _parse_version(pynydus.__version__)
-        required = _parse_version(min_required)
+        current = tuple(int(x) for x in pynydus.__version__.split("."))
+        required = tuple(int(x) for x in min_required.split("."))
     except (ValueError, AttributeError):
         return
 

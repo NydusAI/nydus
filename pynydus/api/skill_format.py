@@ -1,4 +1,4 @@
-"""Agent Skills format — SKILL.md parse / render.
+"""Agent Skills format: SKILL.md parse / render.
 
 Implements the agentskills.io directory convention:
     skills/<slug>/SKILL.md
@@ -42,7 +42,7 @@ class AgentSkill(BaseModel):
     allowed_tools: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     body: str = ""
-    """Markdown body — the main skill content (instructions, code, etc.)."""
+    """Markdown body: the main skill content (instructions, code, etc.)."""
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +59,8 @@ def parse_skill_md(text: str) -> AgentSkill:
     """Parse a SKILL.md string into ``AgentSkill``.
 
     Args:
-        text: Full file contents; optional YAML front-matter (``---`` fences)
-            then Markdown body. Spec fields are parsed; unknown keys go into
+        text: Full file contents. optional YAML front-matter (``---`` fences)
+            then Markdown body. Spec fields are parsed. unknown keys go into
             ``metadata``.
 
     Returns:
@@ -122,7 +122,7 @@ def render_skill_md(skill: AgentSkill) -> str:
         Front-matter plus body string.
 
     Note:
-        Only spec keys are top-level YAML fields; extra data stays under
+        Only spec keys are top-level YAML fields. extra data stays under
         ``metadata``.
     """
     meta: dict[str, Any] = {"name": skill.name}
@@ -173,7 +173,7 @@ def skill_slug(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Bidirectional conversion — SkillRecord <-> AgentSkill
+# Bidirectional conversion: SkillRecord <-> AgentSkill
 # ---------------------------------------------------------------------------
 
 

@@ -30,5 +30,5 @@ Work through these categories systematically:
    Evaluate total cost of ownership, not just the bill.
 
 Present findings with estimated savings per category. Always note the
-trade-offs — cheaper isn't always better if it introduces risk or
+trade-offs: cheaper isn't always better if it introduces risk or
 operational burden.

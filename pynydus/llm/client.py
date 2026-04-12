@@ -2,7 +2,7 @@
 
 Provides a vendor-agnostic interface for LLM calls with structured
 Pydantic output. Each ``LLMTierConfig`` specifies its provider, model, and
-API key — no defaults, no fallbacks.
+API key: no defaults, no fallbacks.
 
 Required dependency:
   - instructor >= 1.0
@@ -57,7 +57,7 @@ def create_completion(
     Args:
         tier: LLM tier config to use for this call.
         messages: Chat messages as ``[{"role": ..., "content": ...}, ...]``.
-        response_model: Pydantic ``BaseModel`` subclass; Instructor validates
+        response_model: Pydantic ``BaseModel`` subclass. Instructor validates
             output against this schema (with retries on validation failure).
         max_retries: Max retries when validation fails.
         log: If set, appends an ``{"type": "llm_call", ...}`` entry with

@@ -6,7 +6,7 @@ echo "=== Step 1: Spawn (gitleaks + Presidio redaction) ==="
 uv run nydus spawn -o travel.egg
 
 echo ""
-echo "=== Step 2: Inspect — see what got redacted ==="
+echo "=== Step 2: Inspect - see what got redacted ==="
 uv run nydus inspect travel.egg --secrets
 
 echo ""

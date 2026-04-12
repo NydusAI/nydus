@@ -1,6 +1,6 @@
 """PII redaction using Microsoft Presidio + custom recognizers.
 
-Presidio handles **PII only** — names, emails, phone numbers, SSNs, credit
+Presidio handles **PII only**: names, emails, phone numbers, SSNs, credit
 cards, addresses, etc.  Secret/credential detection is handled by gitleaks
 (see ``pynydus.security.gitleaks``).
 
@@ -22,7 +22,7 @@ from presidio_analyzer import (
 )
 
 # ---------------------------------------------------------------------------
-# Custom recognizers — PII patterns Presidio doesn't cover out of the box
+# Custom recognizers: PII patterns Presidio doesn't cover out of the box
 # ---------------------------------------------------------------------------
 
 
@@ -83,11 +83,12 @@ def _create_analyzer() -> AnalyzerEngine:
     return analyzer
 
 
-# Singleton — AnalyzerEngine is expensive to create (loads NLP model).
+# Singleton: AnalyzerEngine is expensive to create (loads NLP model).
 _analyzer: AnalyzerEngine | None = None
 
 
 def _get_analyzer() -> AnalyzerEngine:
+    """Return the singleton AnalyzerEngine, creating it on first call."""
     global _analyzer
     if _analyzer is None:
         _analyzer = _create_analyzer()
@@ -95,7 +96,7 @@ def _get_analyzer() -> AnalyzerEngine:
 
 
 # ---------------------------------------------------------------------------
-# Public API — same interface as before, now backed by Presidio
+# Public API: same interface as before, now backed by Presidio
 # ---------------------------------------------------------------------------
 
 # Minimum confidence score for a detection to be included.
@@ -147,7 +148,7 @@ class PIIRedactor:
         self._score_threshold = score_threshold
 
     def redact(self, text: str) -> RedactionResult:
-        """Redact PII spans; repeated values reuse the same placeholder.
+        """Redact PII spans. repeated values reuse the same placeholder.
 
         Args:
             text: Input UTF-8 text.
@@ -162,22 +163,18 @@ class PIIRedactor:
             score_threshold=self._score_threshold,
         )
 
-        # Filter suppressed entity types
         results = [r for r in raw_results if r.entity_type not in _SUPPRESSED_ENTITIES]
-
-        # Resolve overlaps: keep the higher-scoring / longer match
         results = _resolve_overlaps(results)
 
         if not results:
             return RedactionResult(redacted_text=text, replacements=[])
 
-        # Sort ascending by position for result ordering
         results.sort(key=lambda r: r.start)
 
         replacements: list[PIIReplacement] = []
         redacted = text
 
-        # Replace in reverse order to preserve positions
+        # Reverse order so earlier spans' positions aren't shifted by later replacements
         for r in reversed(results):
             original = text[r.start : r.end]
             placeholder = self._get_placeholder(original)
@@ -192,7 +189,6 @@ class PIIRedactor:
                 )
             )
 
-        # Return replacements in document order
         replacements.reverse()
         return RedactionResult(redacted_text=redacted, replacements=replacements)
 

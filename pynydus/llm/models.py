@@ -8,7 +8,7 @@ from pydantic import BaseModel
 class LLMTierConfig(BaseModel):
     """LLM provider, model, and API key for refinement (spawn and hatch).
 
-    All fields are mandatory. There are no defaults — the caller must
+    All fields are mandatory. There are no defaults: the caller must
     explicitly provide provider, model, and api_key.
     """
 

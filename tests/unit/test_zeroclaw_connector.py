@@ -81,7 +81,7 @@ def _rich_egg():
 
 
 def _rich_egg_with_splits():
-    """Egg with IDENTITY, TOOLS, dated memory — tests file-splitting logic."""
+    """Egg with IDENTITY, TOOLS, dated memory: tests file-splitting logic."""
     return make_egg(
         skills=[
             SkillRecord(
@@ -155,7 +155,7 @@ def _rich_egg_with_splits():
 
 
 def _cross_platform_egg():
-    """Egg from a non-ZeroClaw source (e.g. Letta) — no ZeroClaw source_store hints."""
+    """Egg from a non-ZeroClaw source (e.g. Letta): no ZeroClaw source_store hints."""
     return make_egg(
         skills=[
             SkillRecord(id="s1", name="analyze", agent_type="letta", content="def analyze(): pass")
@@ -315,12 +315,6 @@ class TestZeroClawParseDB:
         result = spawner.parse_db(db_path)
         assert len(result.memory) == 1
         assert result.memory[0].text == "Valid."
-
-
-class TestZeroClawDetect:
-    def test_marker_dir(self, tmp_path: Path, spawner):
-        (tmp_path / ".zeroclaw").mkdir()
-        assert spawner.detect(tmp_path) is True
 
 
 class TestZeroClawRender:

@@ -36,7 +36,6 @@ _AGENT_STATE_FILES = ("agent_state.json",)
 _ARCHIVAL_FILES = ("archival_memory.json",)
 _SYSTEM_PROMPT_FILES = ("system_prompt.md", "system_prompt.txt")
 _DB_FILES = ("agent.db",)
-_LETTA_MARKER = ".letta"
 
 _BLOCK_LABEL_MAP: dict[str, MemoryLabel] = {
     "persona": MemoryLabel.PERSONA,
@@ -73,32 +72,6 @@ class LettaSpawner:
 
     FILE_PATTERNS = FILE_PATTERNS
 
-    def detect(self, input_path: Path) -> bool:
-        """Return True if input_path looks like a Letta project."""
-        if input_path.is_file():
-            if input_path.suffix == ".db":
-                return self._is_letta_db(input_path)
-            if input_path.suffix == ".af":
-                return self._is_agent_file(input_path)
-
-        if not input_path.is_dir():
-            return False
-
-        if (input_path / _LETTA_MARKER).is_dir():
-            return True
-        if any((input_path / f).exists() for f in _AGENT_STATE_FILES):
-            return True
-        if any((input_path / f).exists() for f in _DB_FILES):
-            return True
-        if list(input_path.glob("*.af")):
-            return True
-
-        tools_dir = input_path / "tools"
-        if tools_dir.is_dir() and list(tools_dir.glob("*.py")):
-            return True
-
-        return False
-
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Parse pre-redacted file contents into raw skills and memory.
 
@@ -129,6 +102,13 @@ class LettaSpawner:
 
         This is the special case for DB-mode extraction. The pipeline calls
         this instead of ``parse()`` when the source is a ``.db`` file.
+
+        Args:
+            db_path: Path to the Letta ``agent.db`` SQLite file.
+            supplemental_files: Additional text files to parse alongside the DB.
+
+        Returns:
+            Skills and memory extracted from database tables.
         """
         try:
             conn = sqlite3.connect(str(db_path))
@@ -184,9 +164,9 @@ class LettaSpawner:
 
         return ParseResult(skills=skills, memory=memories)
 
-    # ------------------------------------------------------------------
-    # AgentFile (.af) parsing — real AgentFileSchema
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
+    # AgentFile (.af) parsing: real AgentFileSchema
+    # ---------------------------------------------------------------------------
 
     def _try_parse_agent_file(self, files: dict[str, str]) -> ParseResult | None:
         """Try to parse a .af AgentFile from the files dict.
@@ -471,9 +451,9 @@ class LettaSpawner:
                 if val is not None:
                     source_metadata[f"letta.embedding.{key}"] = str(val)
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
 
     def _parse_skills(self, files: dict[str, str]) -> list[RawSkill]:
         """Parse skills from file contents dict."""
@@ -619,41 +599,9 @@ class LettaSpawner:
     def _parse_mcp_configs(files: dict[str, str]) -> dict[str, dict]:
         return _parse_mcp_configs_from_files(files)
 
-    # ------------------------------------------------------------------
+    # ---------------------------------------------------------------------------
     # Database helpers
-    # ------------------------------------------------------------------
-
-    def _find_db(self, root: Path) -> Path | None:
-        """Find a Letta SQLite database in the project directory."""
-        for fname in _DB_FILES:
-            fpath = root / fname
-            if fpath.exists():
-                return fpath
-        return None
-
-    def _is_letta_db(self, db_path: Path) -> bool:
-        """Check if a file is a valid Letta SQLite database."""
-        if not db_path.exists() or not db_path.is_file():
-            return False
-        try:
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = {row[0] for row in cursor.fetchall()}
-            conn.close()
-            return "agents" in tables or "blocks" in tables
-        except (sqlite3.Error, OSError):
-            return False
-
-    @staticmethod
-    def _is_agent_file(af_path: Path) -> bool:
-        """Check if a file is a valid Letta AgentFile (AgentFileSchema)."""
-        if not af_path.exists() or not af_path.is_file():
-            return False
-        try:
-            data = json.loads(af_path.read_text())
-            return isinstance(data, dict) and "agents" in data
-        except (json.JSONDecodeError, OSError):
-            return False
+    # ---------------------------------------------------------------------------
 
     @staticmethod
     def _get_tables(conn: sqlite3.Connection) -> set[str]:

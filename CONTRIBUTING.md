@@ -94,11 +94,10 @@ To add support for a new agent platform (e.g. `myagent`):
 3. Implement `MyAgentHatcher.render(egg: Egg) -> RenderResult`
 4. Add `MYAGENT = "myagent"` to `AgentType` in `pynydus/common/enums.py`
 5. Register in `_get_spawner()` (`engine/pipeline.py`) and `_get_hatcher()` (`engine/hatcher.py`)
-6. Add `Nydusfile.default` in the agent directory
-7. Add unit tests in `tests/unit/test_myagent_connector.py`
-8. Add the new agent type to the portability matrix in `tests/integration/test_portability.py`
+6. Add unit tests in `tests/unit/test_myagent_connector.py`
+7. Add the new agent type to the portability matrix in `tests/integration/test_portability.py`
 
-See `docs/advanced/adding-connectors.md` for the full connector architecture guide.
+See `docs/guides/adding-connectors.md` for the full connector architecture guide.
 
 ## Building base eggs
 
@@ -116,7 +115,7 @@ or:
 uv run nydus spawn -o ./base.egg
 ```
 
-To publish to a Nest registry (after `NYDUS_REGISTRY_URL` is set), run `nydus push` on the built file; each `spawn.sh` includes an example `nydus push` line with suggested `--name` and `--version`.
+To publish to a Nest registry (after `NYDUS_REGISTRY_URL` is set), run `nydus push` on the built file. Each `spawn.sh` includes an example `nydus push` line with suggested `--name` and `--version`.
 
 ## Building docs
 

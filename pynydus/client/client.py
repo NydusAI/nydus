@@ -1,4 +1,4 @@
-"""Python SDK — mirrors the CLI 1:1. Spec §19.
+"""Python SDK: mirrors the CLI 1:1. Spec §19.
 
 Usage::
 
@@ -50,8 +50,8 @@ class Nydus:
         """Spawn an Egg from a Nydusfile.
 
         Args:
-            nydusfile: Path to a Nydusfile. If ``None``, resolves or generates
-                one under the current working directory.
+            nydusfile: Path to a Nydusfile. If ``None``, resolves one in
+                the current working directory.
 
         Returns:
             ``Egg`` with ``raw_artifacts`` and ``spawn_log`` populated from the
@@ -100,8 +100,8 @@ class Nydus:
             output_dir: Directory for output files (connector default if omitted).
             secrets: Path to ``.env`` for placeholder substitution.
             mode: ``rebuild`` (structured modules) or ``passthrough`` (raw snapshot).
-            spawn_log: Spawn pipeline log for the hatch LLM; defaults to ``egg.spawn_log``.
-            raw_artifacts: Redacted ``raw/`` snapshot; defaults to ``egg.raw_artifacts``;
+            spawn_log: Spawn pipeline log for the hatch LLM. defaults to ``egg.spawn_log``.
+            raw_artifacts: Redacted ``raw/`` snapshot. defaults to ``egg.raw_artifacts``.
                 required for ``passthrough`` when empty on the egg.
 
         Returns:
@@ -131,7 +131,19 @@ class Nydus:
         nydusfile_text: str | None = None,
         sign: bool = False,
     ) -> Path:
-        """Write an Egg to a ``.egg`` archive (preferred over :meth:`pack`)."""
+        """Write an Egg to a ``.egg`` archive.
+
+        Args:
+            egg: The Egg to save.
+            output: Destination file path (gets ``.egg`` suffix).
+            raw_artifacts: Override ``egg.raw_artifacts`` for the archive.
+            spawn_log: Override ``egg.spawn_log`` for the archive.
+            nydusfile_text: Embed Nydusfile text in the archive.
+            sign: If ``True``, sign with the user's Ed25519 private key.
+
+        Returns:
+            Path to the written ``.egg`` file.
+        """
         from pynydus.engine.packager import save as save_egg
 
         private_key = None
@@ -155,9 +167,12 @@ class Nydus:
         Args:
             egg_path: Path to the ``.egg`` file.
             include_raw: If ``False``, ``raw/`` is not read into ``egg.raw_artifacts``
-                (empty dict). Use for large eggs when only structured modules are needed;
+                (empty dict). Use for large eggs when only structured modules are needed.
                 for passthrough hatch, load with ``include_raw=True`` or pass
                 ``read_raw_artifacts(egg_path)`` to :meth:`hatch`.
+
+        Returns:
+            Fully populated Egg with spawn_log, raw_artifacts, and nydusfile.
         """
         from pynydus.engine.packager import load as load_egg
 
@@ -203,7 +218,7 @@ class Nydus:
         Args:
             egg_path: Packed archive path.
             name: Registry name (e.g. ``user/my-agent``).
-            version: Semver; if ``None``, taken from ``egg.manifest.egg_version``.
+            version: Semver. if ``None``, taken from ``egg.manifest.egg_version``.
             author: Optional author override.
 
         Returns:
@@ -230,7 +245,7 @@ class Nydus:
 
         Args:
             name: Registry name (e.g. ``user/my-agent``).
-            version: Semver tag; default ``latest``.
+            version: Semver tag. default ``latest``.
             output: Destination path for the downloaded ``.egg``.
 
         Returns:

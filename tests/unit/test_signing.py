@@ -152,7 +152,7 @@ class TestSignVerify:
 
 
 # ---------------------------------------------------------------------------
-# Packager integration — signed eggs
+# Packager integration: signed eggs
 # ---------------------------------------------------------------------------
 
 

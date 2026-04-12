@@ -1,18 +1,18 @@
-"""Egg packaging and reading — archive operations for .egg files. Spec §4.
+"""Egg packaging and reading: archive operations for .egg files. Spec §4.
 
 An .egg file is a zip archive with the canonical directory layout::
 
     manifest.json
-    signature.json           (optional — Ed25519 signature over modules)
+    signature.json           (optional: Ed25519 signature over modules)
     spawn_log.json           (structured spawn pipeline log)
     nydus.json               (per-skill ID/agent_type mapping)
     apm.yml                  (APM compatibility manifest)
-    skills/<slug>/SKILL.md   (Agent Skills format — agentskills.io)
-    mcp/<server>.json        (MCP server configs — modelcontextprotocol.io)
+    skills/<slug>/SKILL.md   (Agent Skills format: agentskills.io)
+    mcp/<server>.json        (MCP server configs: modelcontextprotocol.io)
     memory.json
     secrets.json
     raw/...
-    Nydusfile                (optional — copy of spawn DSL)
+    Nydusfile                (optional: copy of spawn DSL)
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Archive layout constants — single source of truth for .egg ZIP entry names
+# Archive layout constants: single source of truth for .egg ZIP entry names
 # ---------------------------------------------------------------------------
 MANIFEST_ENTRY = "manifest.json"
 MEMORY_ENTRY = "memory.json"
@@ -278,6 +278,17 @@ def save(
 
     Uses ``egg.raw_artifacts``, ``egg.spawn_log``, and ``egg.nydusfile`` when
     the corresponding keyword arguments are omitted.
+
+    Args:
+        egg: Egg to serialize.
+        output_path: Destination path (``.egg`` suffix applied if missing).
+        raw_artifacts: Redacted ``raw/`` snapshot. defaults to ``egg.raw_artifacts``.
+        spawn_log: Pipeline log. defaults to ``egg.spawn_log``.
+        nydusfile_text: Embedded DSL text. defaults to ``egg.nydusfile``.
+        private_key: If set, signs manifest + module payloads (Ed25519).
+
+    Returns:
+        Path to the written ``.egg`` archive.
     """
     ra = egg.raw_artifacts if raw_artifacts is None else raw_artifacts
     sl = egg.spawn_log if spawn_log is None else spawn_log
@@ -315,7 +326,14 @@ def _unpack_egg_core(egg_path: Path) -> Egg:
 
 
 def read_spawn_log_list(egg_path: Path) -> list[dict]:
-    """Return the spawn pipeline log as a list (same as ``spawn_log.json`` body)."""
+    """Return the spawn pipeline log as a list (same as ``spawn_log.json`` body).
+
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+
+    Returns:
+        Log entries, or an empty list if the entry is missing or not a list.
+    """
     blob = read_logs(egg_path).get(SPAWN_LOG_ENTRY)
     if blob is None:
         return []
@@ -330,8 +348,15 @@ def load(egg_path: Path, *, include_raw: bool = True) -> Egg:
     Includes ``spawn_log.json`` as ``spawn_log`` and embedded ``Nydusfile`` text when
     present. When ``include_raw`` is ``True`` (default), ``raw/`` entries are read into
     ``raw_artifacts``. Set ``include_raw=False`` to skip loading ``raw/`` (empty dict) and
-    reduce memory use for large archives; use :func:`read_raw_artifacts` when you need
+    reduce memory use for large archives. use :func:`read_raw_artifacts` when you need
     ``raw/`` for passthrough hatch or inspection.
+
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+        include_raw: When ``False``, skip reading ``raw/`` into memory.
+
+    Returns:
+        Egg with modules, optional ``raw_artifacts``, ``spawn_log``, and ``nydusfile``.
     """
     egg = _unpack_egg_core(egg_path)
     raw = read_raw_artifacts(egg_path) if include_raw else {}
@@ -341,7 +366,14 @@ def load(egg_path: Path, *, include_raw: bool = True) -> Egg:
 
 
 def read_raw_artifacts(egg_path: Path) -> dict[str, str]:
-    """Read raw/ artifacts from an Egg archive."""
+    """Read ``raw/`` artifacts from an Egg archive.
+
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+
+    Returns:
+        Mapping of relative path (under ``raw/``) to UTF-8 text content.
+    """
     artifacts: dict[str, str] = {}
     with zipfile.ZipFile(egg_path, "r") as zf:
         for name in zf.namelist():
@@ -352,7 +384,14 @@ def read_raw_artifacts(egg_path: Path) -> dict[str, str]:
 
 
 def read_logs(egg_path: Path) -> dict[str, list]:
-    """Read structured logs from an Egg archive."""
+    """Read structured logs from an Egg archive.
+
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+
+    Returns:
+        Dict keyed by ZIP entry name (e.g. ``spawn_log.json``) to parsed JSON lists.
+    """
     logs: dict[str, list] = {}
     with zipfile.ZipFile(egg_path, "r") as zf:
         if SPAWN_LOG_ENTRY in zf.namelist():
@@ -361,7 +400,14 @@ def read_logs(egg_path: Path) -> dict[str, list]:
 
 
 def read_nydusfile(egg_path: Path) -> str | None:
-    """Read the embedded Nydusfile text from an Egg archive, or None if absent."""
+    """Read the embedded Nydusfile text from an Egg archive, or None if absent.
+
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+
+    Returns:
+        Embedded Nydusfile source, or ``None`` if not stored in the archive.
+    """
     with zipfile.ZipFile(egg_path, "r") as zf:
         if EMBEDDED_NYDUSFILE_NAME in zf.namelist():
             return zf.read(EMBEDDED_NYDUSFILE_NAME).decode("utf-8")
@@ -369,7 +415,14 @@ def read_nydusfile(egg_path: Path) -> str | None:
 
 
 def read_signature(egg_path: Path) -> dict | None:
-    """Read signature.json from an Egg archive, or None if unsigned."""
+    """Read ``signature.json`` from an Egg archive, or None if unsigned.
+
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+
+    Returns:
+        Parsed signature payload, or ``None`` when the archive is unsigned.
+    """
     with zipfile.ZipFile(egg_path, "r") as zf:
         if SIGNATURE_ENTRY not in zf.namelist():
             return None
@@ -395,10 +448,12 @@ def _read_skills_bytes_for_verification(zf: zipfile.ZipFile) -> bytes:
 def verify_egg_archive(egg_path: Path) -> bool | None:
     """Verify an egg archive's signature.
 
+    Args:
+        egg_path: Path to the ``.egg`` archive.
+
     Returns:
-        True  — signature present and valid
-        False — signature present but INVALID (tampered)
-        None  — no signature (unsigned egg)
+        ``True`` if a signature is present and valid. ``False`` if present but
+        invalid (tampered). ``None`` if the egg is unsigned.
     """
     sig_data = read_signature(egg_path)
     if sig_data is None:

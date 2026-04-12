@@ -6,7 +6,14 @@ from pynydus.api.schemas import Egg, ValidationIssue, ValidationReport
 
 
 def validate_egg(egg: Egg) -> ValidationReport:
-    """Validate an Egg's structural integrity."""
+    """Validate an Egg's structural integrity.
+
+    Args:
+        egg: The Egg to validate.
+
+    Returns:
+        Report with ``valid`` flag and any issues found.
+    """
     issues: list[ValidationIssue] = []
 
     # Check manifest required fields

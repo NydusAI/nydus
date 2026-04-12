@@ -3,7 +3,7 @@
 Spawns from a rich OpenClaw source (all file types), hatches in rebuild mode,
 and verifies every canonical file is produced with correct content routing.
 
-Marked ``@pytest.mark.integration`` — requires ``gitleaks`` on PATH.
+Marked ``@pytest.mark.integration``: requires ``gitleaks`` on PATH.
 """
 
 from __future__ import annotations

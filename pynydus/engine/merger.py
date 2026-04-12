@@ -1,4 +1,4 @@
-"""Egg merge operations — apply ADD/SET/REMOVE directives to a base egg.
+"""Egg merge operations: apply ADD/SET/REMOVE directives to a base egg.
 
 Implements local-only egg inheritance: load a base .egg archive, then apply
 merge operations to produce a modified EggPartial.
@@ -35,7 +35,14 @@ logger = logging.getLogger(__name__)
 def load_base_egg(egg_path: str) -> Egg:
     """Load a base .egg archive from a local file path.
 
-    Raises ``HatchError`` if the file does not exist or cannot be unpacked.
+    Args:
+        egg_path: Path to the ``.egg`` file on disk.
+
+    Returns:
+        Loaded Egg with structured modules.
+
+    Raises:
+        HatchError: If the file does not exist or cannot be unpacked.
     """
     path = Path(egg_path)
     if not path.exists():
@@ -57,7 +64,7 @@ def merge(
     Args:
         base_egg: Loaded base Egg.
         ops: Parsed ``ADD`` / ``SET`` / ``REMOVE`` operations.
-        base_dir: Nydusfile directory; relative paths in values resolve here.
+        base_dir: Nydusfile directory. relative paths in values resolve here.
 
     Returns:
         Partial egg with merged modules.

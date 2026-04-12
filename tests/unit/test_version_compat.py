@@ -13,33 +13,7 @@ from pynydus.api.schemas import (
     SkillsModule,
 )
 from pynydus.common.enums import AgentType, Bucket
-from pynydus.engine.hatcher import _check_version_compat, _parse_version
-
-# ---------------------------------------------------------------------------
-# _parse_version
-# ---------------------------------------------------------------------------
-
-
-class TestParseVersion:
-    def test_simple(self):
-        assert _parse_version("0.1.0") == (0, 1, 0)
-
-    def test_major_minor_patch(self):
-        assert _parse_version("1.2.3") == (1, 2, 3)
-
-    def test_two_digit(self):
-        assert _parse_version("10.20.30") == (10, 20, 30)
-
-    def test_comparison(self):
-        assert _parse_version("0.1.0") < _parse_version("0.2.0")
-        assert _parse_version("0.2.0") < _parse_version("1.0.0")
-        assert _parse_version("1.0.0") == _parse_version("1.0.0")
-        assert _parse_version("0.1.0") < _parse_version("0.1.1")
-
-
-# ---------------------------------------------------------------------------
-# _check_version_compat
-# ---------------------------------------------------------------------------
+from pynydus.engine.hatcher import _check_version_compat
 
 
 def _make_egg(min_nydus_version: str = "0.1.0") -> Egg:
@@ -58,7 +32,6 @@ class TestVersionCompat:
     def test_same_version_passes(self):
         """Current version == min_nydus_version should pass."""
         egg = _make_egg("0.1.0")
-        # Should not raise
         _check_version_compat(egg)
 
     def test_newer_current_passes(self):
@@ -82,13 +55,11 @@ class TestVersionCompat:
         egg = _make_egg("0.1.0")
         # Simulate old egg without the field
         egg.manifest.min_nydus_version = ""  # type: ignore[assignment]
-        # Should not raise (falsy value skips check)
         _check_version_compat(egg)
 
     def test_malformed_version_skips(self):
         """Malformed version strings should skip the check, not crash."""
         egg = _make_egg("not.a.version")
-        # Should not raise — gracefully skip
         _check_version_compat(egg)
 
     def test_hatch_egg_with_future_version(self, tmp_path: Path):
