@@ -85,6 +85,14 @@ make check   # CI-style check (no writes)
 
 Rules: `E`, `F`, `I`, `UP` (pyflakes, pycodestyle, isort, pyupgrade). Line length: 100. Target: Python 3.10.
 
+Conventions for docstrings, comments, and typography are in
+[docs/contributing/code-style.md](docs/contributing/code-style.md) (also
+**Contributing → Code style** on Read the Docs). CI runs Ruff only; see
+[docs/guides/code-quality.md](docs/guides/code-quality.md).
+
+Optional local files you do not push can live under **`.internal/`** (gitignored),
+for example **`COMMENT_RULES.md`** or **`NEW_AGENTS.md`** if you keep personal copies there.
+
 ## Adding a new connector
 
 To add support for a new agent platform (e.g. `myagent`):

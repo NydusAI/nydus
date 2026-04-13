@@ -12,6 +12,12 @@ Directive := FROM | SOURCE | REDACT | EXCLUDE
            | LABEL | ADD | SET | REMOVE
 ```
 
+> **Note:** Registry-qualified `FROM` lines such as `FROM nydus/openclaw:0.3.0`
+> use **example** name and version strings. Your Nest server defines what is
+> actually published. For a local base egg, build from `pynydus/eggs/base/` (for
+> example `openclaw/0.0.1`) and use `FROM ./base.egg`, or point `FROM` at any
+> path returned by `nydus spawn`.
+
 ## Example
 
 

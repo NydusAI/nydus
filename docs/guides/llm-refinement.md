@@ -3,7 +3,9 @@
 PyNydus optionally uses LLM calls during both spawning and hatching. Refinement
 requires **`NYDUS_LLM_TYPE`** (`provider/model`) and **`NYDUS_LLM_API_KEY`**
 together. If both are unset, refinement is skipped. If only one is set,
-`load_config()` raises `ValueError`.
+`load_config()` raises `ValueError` when it is invoked (SDK `Nydus()` and CLI
+commands that load config, such as `spawn` and `hatch`). CLI commands that never
+call `load_config()` are unaffected.
 
 See {doc}`/guides/configuration` for all environment variables.
 

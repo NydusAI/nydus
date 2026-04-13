@@ -63,7 +63,7 @@ provenance used for passthrough hatching, not the canonical model.
 | `agent_type` | string | Source platform (`openclaw`, `letta`, `zeroclaw`) |
 | `included_modules` | list | Which modules are populated (`["skill", "memory", "secret"]`) |
 | `signature` | string | Ed25519 signature (empty if unsigned) |
-| `base_egg` | string or null | `FROM` reference (e.g., `"nydus/openclaw:0.3.0"`) |
+| `base_egg` | string or null | `FROM` reference (registry qualifier or local path, e.g. `"nydus/openclaw:0.3.0"` or `"./base.egg"`) |
 | `redaction_policy` | object | `{pii_redacted: bool, secrets_placeholder_only: bool}` |
 | `source_metadata` | object | Platform-specific metadata from the spawner (e.g., agent name, model) |
 | `sources` | list | At most one `{agent_type, source_path}` entry |

@@ -92,7 +92,8 @@ egg.
 
 ### "Only one SOURCE directive is allowed"
 
-Use `FROM` with a base egg to combine multiple sources:
+Use `FROM` with a base egg to combine multiple sources (registry tag is only
+an example. Use a version your Nest server provides, or `FROM ./base.egg`):
 
 ```text
 FROM nydus/openclaw:0.3.0

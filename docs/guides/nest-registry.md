@@ -63,6 +63,10 @@ Registry references (`name:version`) are pulled from the configured Nest
 server. Local paths (e.g. `FROM ./base.egg`) resolve relative to the
 Nydusfile directory.
 
+The `0.3.0` style tag in examples is illustrative. Published versions depend on
+your registry. Sample sources in this repository live under `pynydus/eggs/base/`
+(see {doc}`/guides/nydusfile`).
+
 ## SDK usage
 
 
@@ -74,6 +78,9 @@ ny.push("agent.egg", name="myuser/my-agent", version="0.1.0")
 path = ny.pull("myuser/my-agent", version="0.1.0", output="agent.egg")
 versions = ny.list_versions("myuser/my-agent")
 ```
+
+The CLI requires `--version` on `nydus pull`. The SDK `pull()` method defaults
+`version` to `"latest"` when omitted.
 
 ## Common errors
 

@@ -13,6 +13,7 @@ security
 llm-refinement
 nest-registry
 configuration
+code-quality
 adding-connectors
 troubleshooting
 ```

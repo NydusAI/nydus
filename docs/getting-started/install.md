@@ -16,7 +16,8 @@ nydus --help
 ```
 
 
-You should see the list of available commands (`spawn`, `hatch`, `inspect`, etc.).
+You should see commands such as `spawn`, `hatch`, `env`, `inspect`, `validate`,
+`diff`, `delete`, `keygen`, `push`, `pull`, `register`, `login`, and `logout`.
 
 ### Supported platforms
 
@@ -36,8 +37,9 @@ Spawning with `REDACT true` (the default) requires
 # macOS
 brew install gitleaks
 
-# Linux
-curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_8.21.2_linux_x64.tar.gz \
+# Linux (replace VERSION with a current tag from the releases page)
+VERSION=8.21.2
+curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
   | tar xz -C /usr/local/bin gitleaks
 
 # From source (requires Go 1.22+)
@@ -61,7 +63,7 @@ export NYDUS_GITLEAKS_PATH=/path/to/gitleaks
 | `nydus spawn` with `REDACT false` | No |
 | `nydus spawn` with `FROM` only (no `SOURCE`) | No |
 | `nydus hatch` | No |
-| `nydus inspect`, `validate`, `diff` | No |
+| `nydus env`, `inspect`, `validate`, `diff`, `delete`, `keygen`, `push`, `pull`, `register`, `login`, `logout` | No |
 
 ## Optional: LLM refinement
 

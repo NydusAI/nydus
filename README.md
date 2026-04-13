@@ -184,8 +184,12 @@ For live LLM tests, copy `.env.example` to `.env` and fill in your API key. The
 
 ```bash
 make fmt          # Ruff formatter + auto-fix lint
-make check        # CI-style check (no writes)
+make check        # Ruff format check + lint (no writes)
 ```
+
+Docstring and comment conventions are documented in
+[docs/contributing/code-style.md](docs/contributing/code-style.md). CI runs Ruff;
+see [docs/guides/code-quality.md](docs/guides/code-quality.md).
 
 ### Documentation
 

@@ -1,3 +1,8 @@
+# Local-only notes, scripts, and scratch (not published upstream).
+# Track .internal/.gitkeep so the directory exists after clone; ignore everything else here.
+.internal/*
+!.internal/.gitkeep
+
 # Python
 __pycache__/
 *.py[cod]

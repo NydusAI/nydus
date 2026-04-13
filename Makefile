@@ -16,10 +16,9 @@ fmt:                ## Auto-format with Ruff, then fix lint where possible
 	uv run ruff format pynydus tests
 	uv run ruff check pynydus tests --fix
 
-check:              ## CI-style: format check + lint + COMMENT_RULES (no writes)
+check:              ## CI-style: Ruff format check + lint (no writes)
 	uv run ruff format --check pynydus tests
 	uv run ruff check pynydus tests
-	uv run python scripts/check_comment_rules.py
 
 test:               ## Run all tests (unit + integration, excludes live_llm)
 	uv run pytest tests/unit tests/integration -m "not live_llm"

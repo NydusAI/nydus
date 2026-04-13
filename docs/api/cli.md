@@ -1,8 +1,9 @@
 # CLI Reference
 
-The `nydus` CLI is installed with `pip install pynydus`. All commands are thin
-wrappers over the Python SDK. LLM and registry settings use environment
-variables (see {doc}`/guides/configuration`).
+The `nydus` CLI is installed with `pip install pynydus`. Commands mirror the
+Python SDK behavior but call the same engine and registry modules directly (they
+are not implemented as thin wrappers around the `Nydus` class). LLM and
+registry settings use environment variables (see {doc}`/guides/configuration`).
 
 ## spawn
 
@@ -187,13 +188,13 @@ Register a new Nest account.
 
 
 ```bash
-nydus register <USERNAME> [-p PASSWORD]
+nydus register <USERNAME>
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `USERNAME` | (required) | Account username |
-| `-p` | (prompted) | Password |
+| `--password`, `-p` | (prompted if omitted) | Password (hidden prompt) |
 
 ---
 
@@ -204,13 +205,13 @@ Log in to Nest. Credentials stored at `~/.nydus/credentials.json`.
 
 
 ```bash
-nydus login <USERNAME> [-p PASSWORD]
+nydus login <USERNAME>
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `USERNAME` | (required) | Account username |
-| `-p` | (prompted) | Password |
+| `--password`, `-p` | (prompted if omitted) | Password (hidden prompt) |
 
 ---
 

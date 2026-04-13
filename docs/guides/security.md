@@ -185,8 +185,9 @@ Custom directory: `nydus keygen --dir ./my-keys/`.
 
 ### How signing works
 
-When a private key exists at `~/.nydus/keys/private.pem` (or via
-`NYDUS_PRIVATE_KEY`), `nydus spawn` automatically signs the egg:
+When a private key exists at `~/.nydus/keys/private.pem`, or when
+`NYDUS_PRIVATE_KEY` is set to the **PEM text** of that key (not a file path),
+`nydus spawn` automatically signs the egg:
 
 1. Serialize manifest, skills, memory, and secrets into ordered byte arrays
 2. Compute SHA-256 over the canonical content

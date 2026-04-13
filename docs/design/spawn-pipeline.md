@@ -27,8 +27,9 @@ any `ADD`, `SET`, or `REMOVE` merge operations to produce an `EggPartial`
 
 - **Local paths** (`FROM ./base.egg`) are resolved relative to the Nydusfile
   directory.
-- **Registry references** (`FROM nydus/openclaw:0.3.0`) are pulled from the
-  Nest registry into a temp file, then loaded.
+- **Registry references** (e.g. `FROM nydus/openclaw:0.3.0` as an illustrative
+  tag) are pulled from the Nest registry into a temp file, then loaded. Use the
+  `name:version` your server actually publishes.
 
 If `FROM` is present but no `SOURCE`, the pipeline short-circuits: it applies
 post-processing (custom labels, memory exclusions) to the base partial and

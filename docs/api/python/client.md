@@ -1,7 +1,8 @@
 # Client SDK
 
 The {py:class}`~pynydus.client.client.Nydus` class is the main entry point for
-using PyNydus programmatically. It mirrors the CLI 1:1.
+using PyNydus programmatically. It mirrors CLI behavior, but Typer entry points
+call the same engines directly rather than delegating to this class.
 
 ## Example
 
@@ -51,7 +52,9 @@ print(result.output_dir, result.files_created, result.warnings)
   Either reload with `include_raw=True` or pass `raw_artifacts=` from
   `pynydus.engine.packager.read_raw_artifacts(path)`.
 - Configure LLM and registry via environment variables (`NYDUS_LLM_TYPE`,
-  `NYDUS_LLM_API_KEY`,   `NYDUS_REGISTRY_URL`, etc.). See {doc}`/guides/configuration`.
+  `NYDUS_LLM_API_KEY`, `NYDUS_REGISTRY_URL`, etc.). See {doc}`/guides/configuration`.
+- Registry `pull()` defaults `version` to `"latest"` if omitted. The `nydus pull`
+  CLI still requires `--version`. See {doc}`/guides/nest-registry`.
 
 ## Nydus
 
