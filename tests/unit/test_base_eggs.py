@@ -53,7 +53,6 @@ class TestBaseEggGeneration:
     def test_openclaw_base_egg(self, openclaw_base: Path):
         egg = load(openclaw_base)
         assert egg.manifest.agent_type == AgentType.OPENCLAW
-        assert egg.manifest.egg_version == "2.0"
         assert len(egg.skills.skills) >= 1
         assert len(egg.memory.memory) >= 1
         assert egg.memory.memory[0].label == MemoryLabel.PERSONA
@@ -66,7 +65,6 @@ class TestBaseEggGeneration:
     def test_letta_base_egg(self, letta_base: Path):
         egg = load(letta_base)
         assert egg.manifest.agent_type == AgentType.LETTA
-        assert egg.manifest.egg_version == "2.0"
         assert len(egg.memory.memory) >= 3
         labels = {m.label for m in egg.memory.memory}
         assert MemoryLabel.PERSONA in labels

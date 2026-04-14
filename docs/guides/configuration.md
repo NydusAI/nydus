@@ -47,5 +47,5 @@ LLM refinement requires both `NYDUS_LLM_TYPE` and `NYDUS_LLM_API_KEY`. If
 both are unset, refinement is skipped. If only one is set, `load_config()`
 raises `ValueError` whenever it runs (for example `nydus spawn`, `nydus hatch`,
 registry commands, or constructing `Nydus()` in the SDK). Commands that never
-call `load_config()` (such as `nydus inspect`, `env`, `validate`, `diff`,
+call `load_config()` (such as `nydus inspect`, `env`, `extract`, `diff`,
 `delete`) do not hit that error. See {doc}`/guides/llm-refinement`.

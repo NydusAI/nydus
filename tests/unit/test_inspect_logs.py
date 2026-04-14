@@ -44,13 +44,13 @@ class TestInspectLogs:
             {
                 "type": "classification",
                 "record_id": "m1",
-                "assigned_label": "skill",
+                "label": "persona",
                 "confidence": 0.92,
             },
             {
                 "type": "classification",
                 "record_id": "m2",
-                "assigned_label": "memory",
+                "label": "flow",
                 "confidence": 0.85,
             },
         ]
@@ -58,8 +58,8 @@ class TestInspectLogs:
         result = runner.invoke(app, ["inspect", str(egg_path), "--logs"])
         assert result.exit_code == 0
         assert "classification" in result.output
-        assert "skill" in result.output
-        assert "memory" in result.output
+        assert "persona" in result.output
+        assert "flow" in result.output
 
     def test_logs_flag_with_extractions(self, sample_egg: Egg, tmp_path: Path):
         spawn_log = [
@@ -115,5 +115,5 @@ class TestInspectLogs:
         egg_path = save(sample_egg, tmp_path / "test.egg")
         result = runner.invoke(app, ["inspect", str(egg_path)])
         assert result.exit_code == 0
-        assert "nydus 0.1.0" in result.output
+        assert "nydus 0.0.7" in result.output
         assert "openclaw" in result.output

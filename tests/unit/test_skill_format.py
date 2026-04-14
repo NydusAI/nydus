@@ -1,18 +1,14 @@
-"""Tests for Agent Skills SKILL.md format: parse, render, slug, conversions."""
+"""Tests for Agent Skills SKILL.md format: parse, render, slug."""
 
 from __future__ import annotations
 
 import pytest
-from pynydus.api.schemas import SkillRecord
 from pynydus.api.skill_format import (
     AgentSkill,
-    agent_skill_to_skill_record,
     parse_skill_md,
     render_skill_md,
-    skill_record_to_agent_skill,
     skill_slug,
 )
-from pynydus.common.enums import AgentType
 
 # ---------------------------------------------------------------------------
 # AgentSkill model
@@ -201,89 +197,3 @@ class TestSkillSlug:
 
     def test_underscores_and_dots(self):
         assert skill_slug("my_skill.v2") == "my-skill-v2"
-
-
-# ---------------------------------------------------------------------------
-# SkillRecord <-> AgentSkill conversion
-# ---------------------------------------------------------------------------
-
-
-class TestSkillRecordToAgentSkill:
-    def test_basic_conversion(self):
-        record = SkillRecord(
-            id="sk-1",
-            name="greet",
-            agent_type=AgentType.OPENCLAW,
-            content="# Greeting\nSay hello.",
-            metadata={"description": "Greets users"},
-        )
-        agent = skill_record_to_agent_skill(record)
-        assert agent.name == "greet"
-        assert agent.description == "Greets users"
-        assert agent.metadata["source_framework"] == "openclaw"
-        assert agent.body == "# Greeting\nSay hello."
-
-    def test_with_tags(self):
-        record = SkillRecord(
-            id="sk-2",
-            name="tag-test",
-            agent_type=AgentType.LETTA,
-            content="body",
-            metadata={"tags": "a, b, c"},
-        )
-        agent = skill_record_to_agent_skill(record)
-        assert agent.metadata["tags"] == ["a", "b", "c"]
-
-    def test_empty_metadata(self):
-        record = SkillRecord(
-            id="sk-3",
-            name="minimal",
-            agent_type=AgentType.OPENCLAW,
-            content="body",
-        )
-        agent = skill_record_to_agent_skill(record)
-        assert agent.description == ""
-        assert agent.version == "1.0"
-        assert agent.metadata.get("source_framework") == "openclaw"
-
-
-class TestAgentSkillToSkillRecord:
-    def test_basic_conversion(self):
-        skill = AgentSkill(
-            name="greet",
-            description="Greets users",
-            metadata={"source_framework": "openclaw"},
-            body="# Greeting\nSay hello.",
-        )
-        data = agent_skill_to_skill_record(skill, skill_id="sk-1", agent_type=AgentType.OPENCLAW)
-        record = SkillRecord(**data)
-        assert record.id == "sk-1"
-        assert record.name == "greet"
-        assert record.content == "# Greeting\nSay hello."
-        assert record.metadata["description"] == "Greets users"
-
-    def test_with_tags(self):
-        skill = AgentSkill(name="t", metadata={"tags": ["x", "y"]})
-        data = agent_skill_to_skill_record(skill)
-        assert data["metadata"]["tags"] == "x, y"
-
-    def test_empty_description_not_in_metadata(self):
-        skill = AgentSkill(name="t")
-        data = agent_skill_to_skill_record(skill)
-        assert "description" not in data["metadata"]
-
-    def test_roundtrip_record_to_agent_to_record(self):
-        original = SkillRecord(
-            id="sk-rt",
-            name="roundtrip",
-            agent_type=AgentType.LETTA,
-            content="body text",
-            metadata={"description": "desc", "tags": "a, b"},
-        )
-        agent = skill_record_to_agent_skill(original)
-        data = agent_skill_to_skill_record(agent, skill_id="sk-rt", agent_type=AgentType.LETTA)
-        restored = SkillRecord(**data)
-        assert restored.name == original.name
-        assert restored.content == original.content
-        assert restored.metadata["description"] == original.metadata["description"]
-        assert restored.metadata["tags"] == original.metadata["tags"]

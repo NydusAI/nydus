@@ -16,18 +16,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     Manifest,
     MemoryModule,
     MemoryRecord,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import (
     AgentType,
-    Bucket,
     InjectionMode,
     MemoryLabel,
     SecretKind,
@@ -39,22 +38,21 @@ from pynydus.engine.hatcher import (
 
 
 @pytest.fixture
-def sample_egg() -> Egg:
+def hatch_log_egg() -> Egg:
     return Egg(
         manifest=Manifest(
-            nydus_version="0.1.0",
+            nydus_version="0.0.7",
             created_at=datetime.now(UTC),
             agent_type=AgentType.OPENCLAW,
-            included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
-            source_metadata={"source_dir": "/tmp/test"},
+            source_dir="/tmp/test",
         ),
         skills=SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="search",
-                    agent_type=AgentType.OPENCLAW,
-                    content="Use key={{SECRET_001}} to auth",
+                    description="",
+                    body="Use key={{SECRET_001}} to auth",
+                    metadata={"id": "skill_001", "source_framework": "openclaw"},
                 )
             ]
         ),
@@ -124,18 +122,17 @@ class TestHatchPipelineLogging:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="skill_001",
+                    AgentSkill(
                         name="search",
-                        agent_type=AgentType.OPENCLAW,
-                        content="Use key={{SECRET_001}} to auth",
+                        description="",
+                        body="Use key={{SECRET_001}} to auth",
+                        metadata={"id": "skill_001", "source_framework": "openclaw"},
                     )
                 ]
             ),
@@ -182,18 +179,17 @@ class TestHatchPipelineLogging:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="skill_001",
+                    AgentSkill(
                         name="search",
-                        agent_type=AgentType.OPENCLAW,
-                        content="no placeholders here",
+                        description="",
+                        body="no placeholders here",
+                        metadata={"id": "skill_001", "source_framework": "openclaw"},
                     )
                 ]
             ),
@@ -218,7 +214,7 @@ class TestHatchPipelineLogging:
         assert len(transform_entries) == 1
         assert transform_entries[0]["phase"] == "render"
 
-    def test_hatch_log_serializable(self, sample_egg: Egg, tmp_path: Path):
+    def test_hatch_log_serializable(self, hatch_log_egg: Egg, tmp_path: Path):
         """hatch_log entries are JSON-serializable."""
         out_dir = tmp_path / "output"
 
@@ -235,7 +231,7 @@ class TestHatchPipelineLogging:
             mock_get.return_value = mock_connector
 
             result = hatch(
-                sample_egg,
+                hatch_log_egg,
                 target="letta",
                 output_dir=out_dir,
                 secrets_path=secrets_file,
@@ -254,18 +250,17 @@ class TestHatchModes:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="skill_001",
+                    AgentSkill(
                         name="search",
-                        agent_type=AgentType.OPENCLAW,
-                        content="search tool",
+                        description="",
+                        body="search tool",
+                        metadata={"id": "skill_001", "source_framework": "openclaw"},
                     )
                 ]
             ),
@@ -289,18 +284,17 @@ class TestHatchModes:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="skill_001",
+                    AgentSkill(
                         name="search",
-                        agent_type=AgentType.OPENCLAW,
-                        content="search tool",
+                        description="",
+                        body="search tool",
+                        metadata={"id": "skill_001", "source_framework": "openclaw"},
                     )
                 ]
             ),
@@ -326,10 +320,9 @@ class TestHatchModes:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
         )
         raw = {"SOUL.md": "content"}
@@ -348,10 +341,9 @@ class TestHatchModes:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
         )
 
@@ -368,10 +360,9 @@ class TestHatchModes:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL, Bucket.MEMORY],
             ),
         )
         raw = {"SOUL.md": "I am a soul.", "MEMORY.md": "Facts here."}
@@ -394,18 +385,17 @@ class TestHatchModes:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL, Bucket.MEMORY],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="s1",
+                    AgentSkill(
                         name="Test",
-                        agent_type=AgentType.OPENCLAW,
-                        content="Do it.",
+                        description="",
+                        body="Do it.",
+                        metadata={"id": "s1", "source_framework": "openclaw"},
                     ),
                 ]
             ),
@@ -436,18 +426,17 @@ class TestHatchLogWrittenByPipeline:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="skill_001",
+                    AgentSkill(
                         name="search",
-                        agent_type=AgentType.OPENCLAW,
-                        content="search tool",
+                        description="",
+                        body="search tool",
+                        metadata={"id": "skill_001", "source_framework": "openclaw"},
                     )
                 ]
             ),
@@ -475,18 +464,17 @@ class TestHatchLogWrittenByPipeline:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="skill_001",
+                    AgentSkill(
                         name="search",
-                        agent_type=AgentType.OPENCLAW,
-                        content="search tool",
+                        description="",
+                        body="search tool",
+                        metadata={"id": "skill_001", "source_framework": "openclaw"},
                     )
                 ]
             ),

@@ -8,15 +8,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     Manifest,
     MemoryModule,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.api.skill_format import parse_skill_md
-from pynydus.common.enums import AgentType, Bucket
+from pynydus.common.enums import AgentType
 from pynydus.engine.packager import (
     load,
     read_logs,
@@ -28,16 +28,15 @@ from pynydus.engine.packager import (
 
 def _make_manifest(**overrides) -> Manifest:
     defaults = dict(
-        nydus_version="0.5.0",
+        nydus_version="0.0.7",
         created_at=datetime.now(UTC),
         agent_type=AgentType.OPENCLAW,
-        included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
     )
     defaults.update(overrides)
     return Manifest(**defaults)
 
 
-def _make_egg(skills: list[SkillRecord] | None = None, **manifest_kw) -> Egg:
+def _make_egg(skills: list[AgentSkill] | None = None, **manifest_kw) -> Egg:
     return Egg(
         manifest=_make_manifest(**manifest_kw),
         skills=SkillsModule(skills=skills or []),
@@ -46,15 +45,16 @@ def _make_egg(skills: list[SkillRecord] | None = None, **manifest_kw) -> Egg:
     )
 
 
-def _make_skill(name: str = "Greeting", content: str = "Say hello", **kw) -> SkillRecord:
-    defaults = dict(
-        id="skill_001",
+def _make_skill(name: str = "Greeting", content: str = "Say hello", **kw) -> AgentSkill:
+    skill_id = kw.pop("id", "skill_001")
+    agent_type = kw.pop("agent_type", AgentType.OPENCLAW)
+    fw = agent_type.value if isinstance(agent_type, AgentType) else str(agent_type)
+    return AgentSkill(
         name=name,
-        agent_type=AgentType.OPENCLAW,
-        content=content,
+        description=name,
+        body=content,
+        metadata={"id": skill_id, "source_framework": fw, **kw},
     )
-    defaults.update(kw)
-    return SkillRecord(**defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +146,7 @@ class TestPackSkillsFormat:
 class TestApmYmlPresence:
     def test_apm_yml_in_packed_archive(self, tmp_path: Path):
         egg = _make_egg(skills=[_make_skill()])
+        egg.apm_yml = "version: 1\n"
         egg_path = save(egg, tmp_path / "test")
         with zipfile.ZipFile(egg_path, "r") as zf:
             assert "apm.yml" in zf.namelist()
@@ -163,7 +164,7 @@ class TestUnpackSkillsFormat:
         loaded = load(egg_path)
         assert len(loaded.skills.skills) == 1
         assert loaded.skills.skills[0].name == "Greet"
-        assert "Say hello nicely" in loaded.skills.skills[0].content
+        assert "Say hello nicely" in loaded.skills.skills[0].body
 
     def test_round_trip_multiple_skills(self, tmp_path: Path):
         skills = [
@@ -186,7 +187,7 @@ class TestUnpackSkillsFormat:
         original = _make_egg(skills=skills)
         egg_path = save(original, tmp_path / "test")
         loaded = load(egg_path)
-        ids = {s.id for s in loaded.skills.skills}
+        ids = {s.metadata.get("id", "") for s in loaded.skills.skills}
         assert "skill_001" in ids
         assert "skill_002" in ids
 
@@ -195,7 +196,7 @@ class TestUnpackSkillsFormat:
         original = _make_egg(skills=[skill])
         egg_path = save(original, tmp_path / "test")
         loaded = load(egg_path)
-        assert loaded.skills.skills[0].agent_type == "letta"
+        assert loaded.skills.skills[0].metadata.get("source_framework") == "letta"
 
     def test_empty_skills_round_trip(self, tmp_path: Path):
         original = _make_egg(skills=[])

@@ -5,7 +5,55 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from pynydus.api.schemas import DiffEntry, DiffReport, Egg, ManifestChange
-from pynydus.common.enums import Bucket, DiffChange
+from pynydus.api.skill_format import AgentSkill
+from pynydus.common.enums import DiffChange, ModuleType
+
+
+def _skill_id(skill: AgentSkill) -> str:
+    return str(skill.metadata.get("id", skill.name))
+
+
+def _diff_skill_records(a_list: list[AgentSkill], b_list: list[AgentSkill]) -> list[DiffEntry]:
+    """Diff skills matched by ``metadata[\"id\"]`` (fallback: name), comparing name and body."""
+    entries: list[DiffEntry] = []
+    a_by_id = {_skill_id(s): s for s in a_list}
+    b_by_id = {_skill_id(s): s for s in b_list}
+    a_ids = set(a_by_id.keys())
+    b_ids = set(b_by_id.keys())
+
+    for rid in sorted(a_ids - b_ids):
+        rec = a_by_id[rid]
+        display = str(rec.name)[:80]
+        entries.append(
+            DiffEntry(bucket=ModuleType.SKILL, change=DiffChange.REMOVED, id=rid, old=display)
+        )
+
+    for rid in sorted(b_ids - a_ids):
+        rec = b_by_id[rid]
+        display = str(rec.name)[:80]
+        entries.append(
+            DiffEntry(bucket=ModuleType.SKILL, change=DiffChange.ADDED, id=rid, new=display)
+        )
+
+    for rid in sorted(a_ids & b_ids):
+        rec_a = a_by_id[rid]
+        rec_b = b_by_id[rid]
+        for field in ("name", "body"):
+            val_a = getattr(rec_a, field)
+            val_b = getattr(rec_b, field)
+            if val_a != val_b:
+                entries.append(
+                    DiffEntry(
+                        bucket=ModuleType.SKILL,
+                        change=DiffChange.MODIFIED,
+                        id=rid,
+                        field=field,
+                        old=str(val_a)[:200],
+                        new=str(val_b)[:200],
+                    )
+                )
+
+    return entries
 
 
 def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
@@ -26,18 +74,13 @@ def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
     entries: list[DiffEntry] = []
 
     entries.extend(
-        _diff_records(
-            list(egg_a.skills.skills),
-            list(egg_b.skills.skills),
-            bucket=Bucket.SKILL,
-            compare_fields=["name", "content"],
-        )
+        _diff_skill_records(list(egg_a.skills.skills), list(egg_b.skills.skills))
     )
     entries.extend(
         _diff_records(
             list(egg_a.memory.memory),
             list(egg_b.memory.memory),
-            bucket=Bucket.MEMORY,
+            bucket=ModuleType.MEMORY,
             compare_fields=["text", "label"],
         )
     )
@@ -45,7 +88,7 @@ def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
         _diff_records(
             list(egg_a.secrets.secrets),
             list(egg_b.secrets.secrets),
-            bucket=Bucket.SECRET,
+            bucket=ModuleType.SECRET,
             compare_fields=["placeholder", "kind", "name", "required_at_hatch"],
         )
     )
@@ -69,7 +112,6 @@ def _diff_manifest(egg_a: Egg, egg_b: Egg) -> list[ManifestChange]:
         "nydus_version",
         "egg_version",
         "agent_type",
-        "included_modules",
     ]
 
     for field in fields:
@@ -95,7 +137,7 @@ def _diff_manifest(egg_a: Egg, egg_b: Egg) -> list[ManifestChange]:
 def _diff_records(
     a_list: list[BaseModel],
     b_list: list[BaseModel],
-    bucket: Bucket,
+    bucket: ModuleType,
     compare_fields: list[str],
 ) -> list[DiffEntry]:
     """Match records by ID and report additions, removals, and field changes.

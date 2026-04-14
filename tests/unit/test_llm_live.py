@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from pynydus.api.schemas import MemoryModule, MemoryRecord, SkillRecord, SkillsModule
+from pynydus.api.schemas import AgentSkill, MemoryModule, MemoryRecord, SkillsModule
 from pynydus.common.enums import MemoryLabel
 from pynydus.engine.refinement import refine_hatch, refine_memory, refine_skills
 from pynydus.llm import LLMTierConfig
@@ -83,17 +83,17 @@ class TestLiveSkills:
         tier = _tier()
         skills = SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="Summarize",
-                    agent_type="openclaw",
-                    content="take text and make it shorter",
+                    description="",
+                    body="take text and make it shorter",
+                    metadata={"id": "skill_001", "source_framework": "openclaw"},
                 )
             ]
         )
         result = refine_skills(skills, tier)
-        assert result.skills[0].content
-        assert result.skills[0].content != "take text and make it shorter", (
+        assert result.skills[0].body
+        assert result.skills[0].body != "take text and make it shorter", (
             "LLM should refine the sloppy skill description"
         )
 
@@ -102,21 +102,21 @@ class TestLiveSkills:
         tier = _tier()
         skills = SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="API helper",
-                    agent_type="openclaw",
-                    content=(
+                    description="",
+                    body=(
                         "Call the endpoint with header Auth: {{SECRET_001}} "
                         "and email {{PII_001}} for the account."
                     ),
+                    metadata={"id": "skill_001", "source_framework": "openclaw"},
                 )
             ]
         )
         result = refine_skills(skills, tier)
         assert len(result.skills) == 1
-        assert result.skills[0].id == "skill_001"
-        text = result.skills[0].content
+        assert result.skills[0].metadata.get("id") == "skill_001"
+        text = result.skills[0].body
         assert "{{PII_001}}" in text
         assert "{{SECRET_001}}" in text
 
@@ -132,7 +132,7 @@ class TestLiveHatch:
         tier = _tier()
         egg = make_egg()
         files = {"SOUL.md": "I am a helpful AI assistant.\n"}
-        result = refine_hatch(files, egg, tier)
+        result = refine_hatch(files, egg, tier, target="openclaw")
         assert "SOUL.md" in result
         assert len(result["SOUL.md"]) > 0
 
@@ -146,6 +146,6 @@ class TestLiveHatch:
                 "They prefer dark mode and use metric units.\n"
             ),
         }
-        result = refine_hatch(files, egg, tier)
+        result = refine_hatch(files, egg, tier, target="openclaw")
         assert "{{PII_001}}" in result["USER.md"]
         assert "{{SECRET_001}}" in result["USER.md"]

@@ -45,7 +45,7 @@ to files in each platform.
 | Memory[**state**] | `knowledge.md`, `MEMORY.md`, `memory/*.md` | `MEMORY.md` + `memory/YYYY-MM-DD.md` (dated records) |
 | Skills | `skill.md`, `skills.md`, `skills/*.md` | `skills/<name>.md` (one file per skill, kebab-case) |
 | Secrets | `config.yaml`, `config.yml`, `config.json` | `config.json` |
-| MCP | `mcp.json`, `mcp/*.json` | `mcp/<name>.json` |
+| MCP | `mcp.json`, `mcp/*.json` | `mcp.json` (Claude Desktop format) |
 
 
 **Detection:** persona file (`SOUL.md`, `soul.md`, `IDENTITY.md`) or skill
@@ -70,7 +70,7 @@ importable by any Letta server via `letta.agents.import_file()`.
 | Memory[**state**] | `archival_memory.json`, `archival/*.{txt,md,json}` | `archival_memory.json` |
 | Skills | `agent_state.json` > `tools[]`, `tools/*.py`, `*.af` > `tools[]` | `agent.af` > `tools[]` |
 | Secrets | config files | `agent.af` > `agents[0].tool_exec_environment_variables` |
-| MCP | `mcp.json`, `mcp/*.json` | `agent.af` > `mcp_servers[]` |
+| MCP | `mcp.json`, `mcp/*.json` | `agent.af` > `mcp_servers[]` (Claude Desktop format) |
 
 
 `agent.db` (SQLite) is also supported as a source. It contains skills, memory,
@@ -91,7 +91,7 @@ or `tools/*.py`.
 | Memory[**state**] | `MEMORY.md`, `knowledge.md`, `memory/*.md`, `memory.db` | `knowledge.md` + `memory/YYYY-MM-DD.md` (dated records) |
 | Skills | `tools/*.py`, `tools.json` | `tools/<name>.py` |
 | Secrets | `config.json`, `config.yaml`, `config.toml` | `config.toml` |
-| MCP | `mcp.json`, `mcp/*.json` | `mcp/<name>.json` |
+| MCP | `mcp.json`, `mcp/*.json` | `mcp.json` (Claude Desktop format) |
 
 
 The hatcher also produces a `.zeroclaw/.keep` marker directory so the workspace

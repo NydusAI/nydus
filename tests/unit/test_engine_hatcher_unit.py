@@ -79,7 +79,7 @@ class TestVersionCompat:
 class TestSecretInjection:
     def test_secrets_from_env(self, _mock_render, tmp_path: Path):
         from pynydus.api.schemas import SecretRecord, SecretsModule
-        from pynydus.common.enums import Bucket, InjectionMode, SecretKind
+        from pynydus.common.enums import InjectionMode, SecretKind
         from pynydus.engine.hatcher import hatch
 
         _mock_render.render.return_value = RenderResult(
@@ -99,7 +99,6 @@ class TestSecretInjection:
                 )
             ]
         )
-        egg.manifest.included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
 
         env_file = tmp_path / "agent.env"
         env_file.write_text("API_KEY=real-value\n")

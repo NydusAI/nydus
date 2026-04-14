@@ -11,7 +11,7 @@ Entry point: `pynydus.engine.hatcher.hatch()`. Returns a `HatchResult`.
 
 The pipeline supports two modes, chosen at invocation:
 
-**Rebuild** (default): The target connector's `render(egg)` method generates
+**Rebuild** (default): The target connector's `render(egg, output_dir)` method generates
 files from the Egg's structured modules (skills, memory, secrets). This works
 for both same-platform and cross-platform hatching. The output follows the
 target platform's canonical layout.
@@ -38,7 +38,7 @@ Depending on the mode:
 ### Rebuild
 
 The target connector is instantiated via `_get_hatcher(target)` and its
-`render(egg)` method is called. This returns a `RenderResult`:
+`render(egg, output_dir)` method is called. This returns a `RenderResult`:
 
 - `files`: `dict[str, str]` of filename -> content (placeholders intact)
 - `warnings`: list of advisory messages

@@ -99,8 +99,8 @@ The platform spawner's `parse(files)` method receives the redacted file dict
 
 - `skills`: list of `RawSkill` (name, content, source_file)
 - `memory`: list of `RawMemory` (text, label, source_file, timestamp)
-- `mcp_configs`: dict of MCP server configurations
-- `source_metadata`: platform-specific metadata (e.g., agent name, model)
+- `mcp_configs`: dict of MCP server configurations (raw, Claude Desktop format)
+- Neutral fields: `agent_name`, `agent_description`, `llm_model`, etc.
 
 The spawner never sees real secrets. It operates entirely on placeholder tokens.
 
@@ -111,7 +111,7 @@ source metadata).
 
 Raw spawner output is normalized into Pydantic records with stable IDs:
 
-- `RawSkill` -> `SkillRecord` (id=`skill_001`, `skill_002`, ...)
+- `RawSkill` -> `AgentSkill` (with `metadata.id`=`skill_001`, `skill_002`, ...)
 - `RawMemory` -> `MemoryRecord` (id=`mem_001`, `mem_002`, ...)
 - Gitleaks + Presidio findings -> `SecretRecord` (deduplicated by placeholder)
 
@@ -180,13 +180,25 @@ kept count).
 The final `Egg` is constructed from:
 
 - **Manifest**: nydus version, min version, egg spec version, timestamp,
-  agent type, included modules, redaction policy, base egg ref, source metadata.
-- **SkillsModule**: all skill records + MCP configs.
+  agent type, neutral fields (agent name, LLM model, etc.), redaction policy, base egg ref.
+- **SkillsModule**: all `AgentSkill` records (agentskills.io format).
+- **McpModule**: raw MCP server configs (Claude Desktop format).
 - **MemoryModule**: all memory records (post-label, post-exclude).
 - **SecretsModule**: all secret/PII placeholder records.
 
 The redacted source files (from Step 3) become `raw_artifacts`, stored as
 `raw/` in the `.egg` archive for passthrough hatching.
 
-**Log entry:** `egg_packaged` (agent type, final skill/memory/secret counts,
-source metadata).
+**Log entry:** `egg_packaged` (agent type, final skill/memory/secret counts).
+
+## Step 10: Generate standard artifacts
+
+Standard artifacts are generated and attached to the egg:
+
+- **APM**: if `apm.yml` exists in source files, it's stashed as `egg.apm_yml`.
+- **A2A**: if `agent-card.json` exists, passthrough; otherwise generated from egg data.
+- **AGENTS.md**: deployment runbook generated from egg contents.
+- **Specs**: all spec markdown files embedded as `egg.spec_snapshots`.
+
+**Log entries:** `apm_passthrough`, `a2a_generated` / `a2a_passthrough`,
+`agents_md_generated`, `specs_embedded`.

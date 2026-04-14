@@ -1,33 +1,15 @@
-"""Tests for Egg, Manifest, and module schema construction, serialization, and defaults."""
-
-from datetime import UTC, datetime
+"""Tests for API schema construction, serialization, and defaults."""
 
 from pynydus.api.schemas import (
-    Manifest,
     MemoryRecord,
     SecretRecord,
-    SkillRecord,
     ValidationReport,
 )
 from pynydus.common.enums import (
-    AgentType,
-    Bucket,
     InjectionMode,
     MemoryLabel,
     SecretKind,
 )
-
-
-class TestSkillRecord:
-    def test_minimal(self):
-        s = SkillRecord(
-            id="skill_001",
-            name="summarize_docs",
-            agent_type="markdown_skill",
-            content="Summarize a document into 5 bullets.",
-        )
-        assert s.id == "skill_001"
-        assert s.metadata == {}
 
 
 class TestMemoryRecord:
@@ -78,17 +60,6 @@ class TestSecretRecord:
             injection_mode=InjectionMode.SUBSTITUTION,
         )
         assert s.pii_type == "PERSON"
-
-
-class TestManifest:
-    def test_required_fields(self):
-        m = Manifest(
-            nydus_version="0.1.0",
-            created_at=datetime.now(UTC),
-            agent_type=AgentType.OPENCLAW,
-            included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
-        )
-        assert m.egg_version == "2.0"
 
 
 class TestValidationReport:

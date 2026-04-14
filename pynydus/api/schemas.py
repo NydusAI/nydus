@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from pynydus.api.skill_format import AgentSkill  # noqa: F401  # canonical skill type
 from pynydus.common.enums import (  # noqa: F401  # re-exported for convenience
     AgentType,
     Bucket,
@@ -19,44 +20,33 @@ from pynydus.common.enums import (  # noqa: F401  # re-exported for convenience
     HatchMode,
     InjectionMode,
     MemoryLabel,
+    ModuleType,
     SecretKind,
 )
 
 # ---------------------------------------------------------------------------
-# Module records
+# Module records / containers
 # ---------------------------------------------------------------------------
 
 
-class SkillRecord(BaseModel):
-    """A single skill extracted from the source. Spec §5.1."""
+class McpModule(BaseModel):
+    """Raw MCP server configs. Nydus does not model MCP fields.
 
-    id: str
-    name: str
-    agent_type: str
-    content: str
-    metadata: dict[str, str] = Field(default_factory=dict)
+    Stored as ``mcp.json`` in the egg archive using Claude Desktop format
+    (``{ "mcpServers": { "<name>": { ... } } }``).
+    """
 
-
-class McpServerConfig(BaseModel):
-    """Configuration for a single MCP server. Spec §4."""
-
-    command: str = ""
-    args: list[str] = Field(default_factory=list)
-    env: dict[str, str] = Field(default_factory=dict)
-    url: str = ""
-    description: str = ""
+    configs: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class SkillsModule(BaseModel):
-    """Container for all skills and MCP configs in an Egg."""
+    """Container for all skills in an Egg (agentskills.io format)."""
 
-    skills: list[SkillRecord] = Field(default_factory=list)
-    mcp_configs: dict[str, McpServerConfig] = Field(default_factory=dict)
-    """MCP server configs keyed by server name (e.g. ``filesystem``)."""
+    skills: list[AgentSkill] = Field(default_factory=list)
 
 
 class MemoryRecord(BaseModel):
-    """A single memory record. Spec §5.2."""
+    """A single memory record."""
 
     id: str
     text: str
@@ -66,7 +56,6 @@ class MemoryRecord(BaseModel):
     skill_ref: str | None = None
     timestamp: datetime | None = None
     shareable: bool = True
-    metadata: dict[str, str] = Field(default_factory=dict)
 
 
 class MemoryModule(BaseModel):
@@ -116,23 +105,28 @@ class SourceEntry(BaseModel):
 
 
 class Manifest(BaseModel):
-    """Top-level Egg metadata. Spec §7."""
+    """Top-level Egg metadata."""
 
     nydus_version: str
-    min_nydus_version: str = "0.1.0"
-    egg_version: str = "2.0"
+    min_nydus_version: str = "0.0.7"
+    egg_version: str = "1.0"
     created_at: datetime
     agent_type: AgentType
-    included_modules: list[Bucket]
     signature: str = ""
 
     # Optional
     base_egg: str | None = None
     """Base egg reference this egg inherited from (e.g. 'nydus/openclaw:0.3.0')."""
     redaction_policy: RedactionPolicy | None = None
-    source_metadata: dict[str, str] = Field(default_factory=dict)
 
-    # CR-002 additions
+    # Neutral fields: any spawner writes, any hatcher reads
+    agent_name: str | None = None
+    agent_description: str | None = None
+    llm_model: str | None = None
+    llm_context_window: int | None = None
+    embedding_model: str | None = None
+    source_dir: str | None = None
+
     sources: Annotated[list[SourceEntry], Field(max_length=1)] = Field(default_factory=list)
     """At most one source entry (FROM-only spawns may omit this list)."""
 
@@ -152,6 +146,7 @@ class Egg(BaseModel):
 
     manifest: Manifest
     skills: SkillsModule = Field(default_factory=SkillsModule)
+    mcp: McpModule = Field(default_factory=McpModule)
     memory: MemoryModule = Field(default_factory=MemoryModule)
     secrets: SecretsModule = Field(default_factory=SecretsModule)
     raw_artifacts: dict[str, str] = Field(default_factory=dict)
@@ -160,6 +155,16 @@ class Egg(BaseModel):
     """Structured spawn pipeline events (ZIP ``spawn_log.json``)."""
     nydusfile: str | None = None
     """Embedded Nydusfile text when present in the archive (ZIP ``Nydusfile``)."""
+
+    # Standard artifact fields (populated during spawn, optional for legacy eggs)
+    a2a_card: dict[str, Any] | None = None
+    """A2A agent card (agent-card.json)."""
+    agents_md: str | None = None
+    """Per-egg deployment runbook (AGENTS.md)."""
+    apm_yml: str | None = None
+    """Passthrough APM manifest from source project."""
+    spec_snapshots: dict[str, str] | None = None
+    """Embedded spec markdown snapshots keyed by standard name."""
 
     def inspect_secrets(self) -> list[dict]:
         """Return a summary of all secret placeholders and their occurrences.
@@ -203,10 +208,10 @@ class EggPartial(BaseModel):
     """Intermediate result from a spawner before full packaging."""
 
     skills: SkillsModule = Field(default_factory=SkillsModule)
+    mcp: McpModule = Field(default_factory=McpModule)
     memory: MemoryModule = Field(default_factory=MemoryModule)
     secrets: SecretsModule = Field(default_factory=SecretsModule)
     raw_artifacts: dict[str, str] = Field(default_factory=dict)
-    source_metadata: dict[str, str] = Field(default_factory=dict)
 
     # Pipeline log: single list of typed events, packed into logs/spawn_log.json
     spawn_log: list[dict] = Field(default_factory=list)
@@ -237,10 +242,10 @@ class ManifestChange(BaseModel):
 
 
 class DiffEntry(BaseModel):
-    """A single record-level difference within a bucket."""
+    """A single record-level difference within a module type."""
 
-    bucket: Bucket
-    """Which bucket the record belongs to."""
+    bucket: ModuleType
+    """Which module the record belongs to (skill, memory, secret)."""
 
     change: DiffChange
     """Type of change: ADDED, REMOVED, or MODIFIED."""

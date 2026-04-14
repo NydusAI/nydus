@@ -9,9 +9,9 @@ from pathlib import Path
 from pynydus.api.errors import NydusfileError
 from pynydus.common.enums import (
     AgentType,
-    Bucket,
     Directive,
     MemoryLabel,
+    ModuleType,
 )
 
 _logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class MergeOp:
     """A single ADD/SET/REMOVE merge operation from the Nydusfile."""
 
     action: Directive
-    bucket: Bucket
+    bucket: ModuleType
     key: str
     value: str = ""
 
@@ -311,11 +311,11 @@ def _parse_merge_op(action: Directive, arg: str, lineno: int) -> MergeOp:
         selector = ""
 
     try:
-        bucket = Bucket(raw_bucket)
+        bucket = ModuleType(raw_bucket)
     except ValueError:
         raise NydusfileError(
             f"Unknown bucket '{raw_bucket}' for {action}. "
-            f"Expected one of: {', '.join(sorted(Bucket))}",
+            f"Expected one of: {', '.join(sorted(ModuleType))}",
             line=lineno,
         )
 
@@ -329,7 +329,7 @@ def _parse_merge_op(action: Directive, arg: str, lineno: int) -> MergeOp:
         return MergeOp(action=Directive.REMOVE, bucket=bucket, key=key)
 
     if action is Directive.SET:
-        if bucket is Bucket.SECRET:
+        if bucket is ModuleType.SECRET:
             raise NydusfileError(
                 "SET is not supported for the secret bucket. Use REMOVE + ADD to replace a secret.",
                 line=lineno,

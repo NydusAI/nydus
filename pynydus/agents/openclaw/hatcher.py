@@ -12,7 +12,7 @@ the canonical layout defined in AGENT_SPEC.md:
 - memory/YYYY-MM-DD.md <- dated state memory (one file per day)
 - skills/<name>.md  <- one file per skill, kebab-case names
 - config.json       <- secret placeholders
-- mcp/              <- MCP server configs
+- mcp.json          <- MCP servers (Claude Desktop ``mcpServers`` format)
 """
 
 from __future__ import annotations
@@ -23,13 +23,16 @@ from collections import defaultdict
 from pathlib import Path
 
 from pynydus.api.errors import HatchError
+from pynydus.api.protocols import Hatcher
 from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import (
     Egg,
     HatchResult,
     MemoryRecord,
-    ValidationIssue,
-    ValidationReport,
+)
+from pynydus.common.connector_utils import (
+    date_key_from_record as _date_key_from_record,
+    join_records as _join_records,
 )
 from pynydus.common.enums import MemoryLabel, SecretKind
 
@@ -44,34 +47,15 @@ def _is_tools_source(rec: MemoryRecord) -> bool:
     return rec.source_store.lower() in ("tools.md",)
 
 
-def _date_key_from_record(rec: MemoryRecord) -> str | None:
-    """Extract a YYYY-MM-DD date key from a state record.
-
-    Prefers the record's timestamp field. falls back to extracting a date
-    from source_store (e.g. ``memory/2026-04-01.md``).
-    """
-    if rec.timestamp:
-        return rec.timestamp.strftime("%Y-%m-%d")
-    m = re.search(r"(\d{4}-\d{2}-\d{2})", rec.source_store)
-    if m:
-        return m.group(1)
-    return None
-
-
 def _to_kebab(name: str) -> str:
     """Convert a skill name to kebab-case filename stem."""
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def _join_records(records: list[MemoryRecord]) -> str:
-    """Join memory records into a single file's content."""
-    return "\n\n".join(r.text for r in records) + "\n"
-
-
-class OpenClawHatcher:
+class OpenClawHatcher(Hatcher):
     """Produce a valid OpenClaw project directory from an Egg."""
 
-    def render(self, egg: Egg) -> RenderResult:
+    def render(self, egg: Egg, output_dir: Path) -> RenderResult:
         """Render Egg records into OpenClaw project files.
 
         Placeholders (``{{SECRET_NNN}}``, ``{{PII_NNN}}``) are preserved.
@@ -79,10 +63,12 @@ class OpenClawHatcher:
 
         Args:
             egg: The Egg to render.
+            output_dir: Target directory (unused; pipeline performs disk I/O).
 
         Returns:
             File dict and any warnings produced during rendering.
         """
+        _ = output_dir
         files: dict[str, str] = {}
         warnings: list[str] = []
 
@@ -143,7 +129,7 @@ class OpenClawHatcher:
         # --- skills/<name>.md ---
         for s in egg.skills.skills:
             stem = _to_kebab(s.name)
-            files[f"skills/{stem}.md"] = s.content + "\n"
+            files[f"skills/{stem}.md"] = s.body + "\n"
 
         # --- config.json (credential placeholders) ---
         credentials = [s for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL]
@@ -151,12 +137,10 @@ class OpenClawHatcher:
             config = {s.name: s.placeholder for s in credentials}
             files["config.json"] = json.dumps(config, indent=2) + "\n"
 
-        # --- mcp/ directory (MCP server configs) ---
-        if egg.skills.mcp_configs:
-            for name, cfg in sorted(egg.skills.mcp_configs.items()):
-                files[f"mcp/{name}.json"] = (
-                    json.dumps(cfg.model_dump(exclude_defaults=True), indent=2) + "\n"
-                )
+        # --- mcp.json (Claude Desktop format) ---
+        if egg.mcp.configs:
+            mcp_doc = {"mcpServers": dict(egg.mcp.configs)}
+            files["mcp.json"] = json.dumps(mcp_doc, indent=2) + "\n"
 
         if not files:
             raise HatchError("Egg produced no output files for OpenClaw target")
@@ -176,7 +160,7 @@ class OpenClawHatcher:
         Returns:
             Result with list of created files and any warnings.
         """
-        result = self.render(egg)
+        result = self.render(egg, output_dir)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         files_created: list[str] = []
@@ -191,42 +175,4 @@ class OpenClawHatcher:
             output_dir=output_dir,
             files_created=files_created,
             warnings=list(result.warnings),
-        )
-
-    def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated OpenClaw output.
-
-        Args:
-            result: The hatch result to validate.
-
-        Returns:
-            Report with ``valid`` flag and any issues found.
-        """
-        issues: list[ValidationIssue] = []
-
-        has_soul = "soul.md" in result.files_created
-        has_skill = "skill.md" in result.files_created
-        if not has_soul and not has_skill:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message="Neither soul.md nor skill.md was generated",
-                    location=str(result.output_dir),
-                )
-            )
-
-        for fname in result.files_created:
-            fpath = result.output_dir / fname
-            if not fpath.exists():
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message=f"Expected file not found: {fname}",
-                        location=str(fpath),
-                    )
-                )
-
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues),
-            issues=issues,
         )

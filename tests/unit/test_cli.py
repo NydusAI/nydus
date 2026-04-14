@@ -138,6 +138,23 @@ class TestHatchCommand:
         assert result.exit_code == 0
         assert out_dir.exists()
 
+    def test_hatch_skip_validation_flag(self, spawned_egg: Path, tmp_path: Path):
+        out_dir = tmp_path / "hatched_skip"
+        result = runner.invoke(
+            app,
+            [
+                "hatch",
+                str(spawned_egg),
+                "--target",
+                "openclaw",
+                "--skip-validation",
+                "-o",
+                str(out_dir),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Hatched into openclaw" in result.output
+
 
 # ---------------------------------------------------------------------------
 # inspect
@@ -152,6 +169,16 @@ class TestInspectCommand:
         assert "nydus" in result.output
         assert "openclaw" in result.output.lower()
 
+    def test_inspect_includes_validation(self, spawned_egg: Path):
+        result = runner.invoke(app, ["inspect", str(spawned_egg)])
+        assert result.exit_code == 0
+        assert "validation:" in result.output
+
+    def test_inspect_no_validate_flag(self, spawned_egg: Path):
+        result = runner.invoke(app, ["inspect", str(spawned_egg), "--no-validate"])
+        assert result.exit_code == 0
+        assert "validation:" not in result.output
+
     def test_inspect_missing_egg(self, tmp_path: Path):
         result = runner.invoke(app, ["inspect", str(tmp_path / "nope.egg")])
         assert result.exit_code == 1
@@ -159,19 +186,95 @@ class TestInspectCommand:
 
 
 # ---------------------------------------------------------------------------
-# validate
+# extract
 # ---------------------------------------------------------------------------
 
 
-class TestValidateCommand:
-    def test_validate_valid_egg(self, spawned_egg: Path):
-        result = runner.invoke(app, ["validate", str(spawned_egg)])
+class TestExtractCommand:
+    def test_extract_mcp_empty(self, spawned_egg: Path, tmp_path: Path):
+        out = tmp_path / "ext_mcp"
+        result = runner.invoke(
+            app, ["extract", "mcp", "--from", str(spawned_egg), "-o", str(out)]
+        )
         assert result.exit_code == 0
-        assert "valid" in result.output.lower()
+        assert "No MCP config" in result.output
 
-    def test_validate_missing_egg(self, tmp_path: Path):
-        result = runner.invoke(app, ["validate", str(tmp_path / "nope.egg")])
+    def test_extract_skills_from_egg_with_skills(
+        self, openclaw_source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        skills_dir = openclaw_source / "skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        (skills_dir / "greet.md").write_text("Say hello to the user warmly.\n")
+        nydusfile = tmp_path / "Nydusfile"
+        nydusfile.write_text(f"SOURCE openclaw {openclaw_source}\n")
+        monkeypatch.chdir(tmp_path)
+        egg_path = tmp_path / "skilled.egg"
+        result = runner.invoke(app, ["spawn", "-o", str(egg_path)])
+        assert result.exit_code == 0, result.output
+
+        out = tmp_path / "ext_skills"
+        result = runner.invoke(
+            app, ["extract", "skills", "--from", str(egg_path), "-o", str(out)]
+        )
+        assert result.exit_code == 0
+        assert "Extracted" in result.output
+        assert any(out.rglob("SKILL.md"))
+
+    def test_extract_a2a(self, spawned_egg: Path, tmp_path: Path):
+        out = tmp_path / "ext_a2a"
+        result = runner.invoke(
+            app, ["extract", "a2a", "--from", str(spawned_egg), "-o", str(out)]
+        )
+        assert result.exit_code == 0
+        assert "Extracted" in result.output
+        assert (out / "agent-card.json").exists()
+
+    def test_extract_apm_absent(self, spawned_egg: Path, tmp_path: Path):
+        out = tmp_path / "ext_apm"
+        result = runner.invoke(
+            app, ["extract", "apm", "--from", str(spawned_egg), "-o", str(out)]
+        )
+        assert result.exit_code == 0
+        assert "No apm.yml" in result.output
+
+    def test_extract_agents(self, spawned_egg: Path, tmp_path: Path):
+        out = tmp_path / "ext_agents"
+        result = runner.invoke(
+            app, ["extract", "agents", "--from", str(spawned_egg), "-o", str(out)]
+        )
+        assert result.exit_code == 0
+        assert "Extracted" in result.output
+        assert (out / "AGENTS.md").exists()
+
+    def test_extract_specs(self, spawned_egg: Path, tmp_path: Path):
+        out = tmp_path / "ext_specs"
+        result = runner.invoke(
+            app, ["extract", "specs", "--from", str(spawned_egg), "-o", str(out)]
+        )
+        assert result.exit_code == 0
+        assert "Extracted" in result.output
+        assert (out / "manifest.json").exists()
+
+    def test_extract_all(self, spawned_egg: Path, tmp_path: Path):
+        out = tmp_path / "ext_all"
+        result = runner.invoke(
+            app, ["extract", "all", "--from", str(spawned_egg), "-o", str(out)]
+        )
+        assert result.exit_code == 0
+        assert "Extracted" in result.output
+        assert out.exists()
+
+    def test_extract_missing_egg(self, tmp_path: Path):
+        result = runner.invoke(
+            app, ["extract", "mcp", "--from", str(tmp_path / "nope.egg"), "-o", str(tmp_path)]
+        )
         assert result.exit_code == 1
+        assert "Error" in result.output
+
+    def test_extract_help(self):
+        result = runner.invoke(app, ["extract", "--help"])
+        assert result.exit_code == 0
+        assert "extract" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +344,7 @@ class TestKeygenCommand:
 
 
 # ---------------------------------------------------------------------------
-# push / pull (Phase 1b stubs)
+# push / pull / registry
 # ---------------------------------------------------------------------------
 
 
@@ -321,12 +424,11 @@ class TestEnvCommand:
             MemoryRecord,
             SecretRecord,
             SecretsModule,
-            SkillRecord,
+            AgentSkill,
             SkillsModule,
         )
         from pynydus.common.enums import (
             AgentType,
-            Bucket,
             InjectionMode,
             MemoryLabel,
             SecretKind,
@@ -335,15 +437,17 @@ class TestEnvCommand:
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="s1", name="greet", agent_type=AgentType.OPENCLAW, content="Say hello"
+                    AgentSkill(
+                        name="greet",
+                        description="",
+                        body="Say hello",
+                        metadata={"id": "s1", "source_framework": "openclaw"},
                     ),
                 ]
             ),

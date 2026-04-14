@@ -26,12 +26,16 @@ class AgentType(StrEnum):
 # ---------------------------------------------------------------------------
 
 
-class Bucket(StrEnum):
-    """Top-level module buckets in an Egg."""
+class ModuleType(StrEnum):
+    """Top-level module types in an Egg (skill, memory, secret)."""
 
     SKILL = "skill"
     MEMORY = "memory"
     SECRET = "secret"
+
+
+# Backward-compatible alias
+Bucket = ModuleType
 
 
 class SecretKind(StrEnum):

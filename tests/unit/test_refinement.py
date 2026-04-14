@@ -8,11 +8,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     EggPartial,
     MemoryModule,
     MemoryRecord,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import MemoryLabel
@@ -64,21 +64,27 @@ def sample_memory_records() -> list[MemoryRecord]:
 
 
 @pytest.fixture
-def sample_skill_records() -> list[SkillRecord]:
+def sample_skill_records() -> list[AgentSkill]:
     return [
-        SkillRecord(
-            id="skill_001",
+        AgentSkill(
             name="  summarize Documents  ",
-            agent_type="markdown_skill",
-            content="Given a document, produce a 5-bullet summary.\n\n",
-            metadata={"path": "skill.md"},
+            description="",
+            body="Given a document, produce a 5-bullet summary.\n\n",
+            metadata={
+                "id": "skill_001",
+                "source_framework": "markdown_skill",
+                "path": "skill.md",
+            },
         ),
-        SkillRecord(
-            id="skill_002",
+        AgentSkill(
             name="translate_text",
-            agent_type="markdown_skill",
-            content="Translate text between English and French",
-            metadata={"path": "skill.md"},
+            description="",
+            body="Translate text between English and French",
+            metadata={
+                "id": "skill_002",
+                "source_framework": "markdown_skill",
+                "path": "skill.md",
+            },
         ),
     ]
 
@@ -86,7 +92,7 @@ def sample_skill_records() -> list[SkillRecord]:
 @pytest.fixture
 def sample_partial(
     sample_memory_records: list[MemoryRecord],
-    sample_skill_records: list[SkillRecord],
+    sample_skill_records: list[AgentSkill],
 ) -> EggPartial:
     return EggPartial(
         skills=SkillsModule(skills=sample_skill_records),
@@ -270,8 +276,8 @@ class TestRefineSkills:
 
         assert result.skills[0].name == "Summarize Documents"
         assert result.skills[1].name == "Translate Text"
-        assert result.skills[0].agent_type == "markdown_skill"
-        assert result.skills[0].metadata == {"path": "skill.md"}
+        assert result.skills[0].metadata.get("source_framework") == "markdown_skill"
+        assert result.skills[0].metadata.get("path") == "skill.md"
 
     @patch("pynydus.engine.refinement.create_completion")
     def test_skill_failure_returns_original(
@@ -281,11 +287,11 @@ class TestRefineSkills:
     ):
         skills = SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="test",
-                    agent_type="markdown_skill",
-                    content="content",
+                    description="",
+                    body="content",
+                    metadata={"id": "skill_001", "source_framework": "markdown_skill"},
                 )
             ]
         )
@@ -327,7 +333,7 @@ class TestRefineHatch:
             ],
         )
 
-        result = refine_hatch(file_dict, minimal_egg, llm_config)
+        result = refine_hatch(file_dict, minimal_egg, llm_config, target="letta")
 
         assert result["SOUL.md"] == "Adapted soul content for Letta"
         assert result["skill.md"] == "Original skill content"
@@ -343,7 +349,7 @@ class TestRefineHatch:
 
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
-        refine_hatch(file_dict, minimal_egg, llm_config)
+        refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw")
 
         mock_completion.assert_called_once()
         system_msg = mock_completion.call_args[1]["messages"][0]["content"]
@@ -360,7 +366,7 @@ class TestRefineHatch:
         file_dict = {"SOUL.md": "Original content"}
         mock_completion.return_value = None
 
-        result = refine_hatch(file_dict, minimal_egg, llm_config)
+        result = refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw")
 
         assert result["SOUL.md"] == "Original content"
         assert result is file_dict
@@ -372,7 +378,7 @@ class TestRefineHatch:
         minimal_egg: Egg,
         llm_config: LLMTierConfig,
     ):
-        refine_hatch({}, minimal_egg, llm_config)
+        refine_hatch({}, minimal_egg, llm_config, target="openclaw")
         mock_completion.assert_not_called()
 
     @patch("pynydus.engine.refinement.create_completion")
@@ -390,7 +396,7 @@ class TestRefineHatch:
             ],
         )
 
-        result = refine_hatch(file_dict, minimal_egg, llm_config)
+        result = refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw")
 
         assert result["SOUL.md"] == "Adapted"
         assert "malicious.md" not in result
@@ -409,6 +415,7 @@ class TestRefineHatch:
             file_dict,
             minimal_egg,
             llm_config,
+            target="openclaw",
             raw_artifacts={"SOUL.md": "Original raw content"},
         )
 
@@ -429,17 +436,15 @@ class TestRefineHatch:
         )
         from pynydus.common.enums import (
             AgentType,
-            Bucket,
             InjectionMode,
             SecretKind,
         )
 
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
             ),
             secrets=SecretsModule(
                 secrets=[
@@ -458,7 +463,7 @@ class TestRefineHatch:
         file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
-        refine_hatch(file_dict, egg, llm_config)
+        refine_hatch(file_dict, egg, llm_config, target="openclaw")
 
         user_msg = mock_completion.call_args[1]["messages"][1]["content"]
         assert "{{SECRET_001}}" in user_msg
@@ -500,7 +505,7 @@ class TestTierSelection:
         file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
-        refine_hatch(file_dict, minimal_egg, llm_config)
+        refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw")
 
         call_tier = mock_completion.call_args[0][0]
         assert call_tier is llm_config
@@ -534,7 +539,7 @@ class TestHatchPlaceholderRetry:
         )
         mock_completion.side_effect = [bad, good]
 
-        result = refine_hatch({"USER.md": original}, minimal_egg, llm_config)
+        result = refine_hatch({"USER.md": original}, minimal_egg, llm_config, target="openclaw")
 
         assert "{{PII_001}}" in result["USER.md"]
         assert "{{SECRET_001}}" in result["USER.md"]
@@ -559,6 +564,7 @@ class TestHatchPlaceholderRetry:
             {"USER.md": original},
             minimal_egg,
             llm_config,
+            target="openclaw",
             log=log,
         )
 
@@ -587,7 +593,7 @@ class TestHatchPlaceholderRetry:
             ]
         )
 
-        result = refine_hatch(files, minimal_egg, llm_config)
+        result = refine_hatch(files, minimal_egg, llm_config, target="openclaw")
 
         assert result["SOUL.md"] == "I am a helpful assistant."
         assert result["USER.md"] == files["USER.md"]
@@ -637,11 +643,11 @@ class TestSkillPlaceholderRevert:
         original_content = "Use header Auth: {{SECRET_001}} and email {{PII_001}}."
         skills = SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="API helper",
-                    agent_type="openclaw",
-                    content=original_content,
+                    description="",
+                    body=original_content,
+                    metadata={"id": "skill_001", "source_framework": "openclaw"},
                 )
             ]
         )
@@ -657,5 +663,5 @@ class TestSkillPlaceholderRevert:
 
         result = refine_skills(skills, llm_config)
 
-        assert result.skills[0].content == original_content
+        assert result.skills[0].body == original_content
         assert result.skills[0].name == "API Helper"

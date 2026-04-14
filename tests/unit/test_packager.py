@@ -107,12 +107,10 @@ class TestCorruptedEgg:
     def test_missing_modules(self, tmp_path: Path):
         egg_path = tmp_path / "no_modules.egg"
         manifest = {
-            "nydus_version": "0.1.0",
+            "nydus_version": "0.0.7",
             "egg_version": "1.0",
             "created_at": datetime.now(UTC).isoformat(),
             "agent_type": "openclaw",
-            "included_modules": [],
-            "source_metadata": {},
         }
         with zipfile.ZipFile(egg_path, "w") as zf:
             zf.writestr("manifest.json", json.dumps(manifest))
@@ -148,12 +146,10 @@ class TestCorruptedEgg:
 def _make_minimal_egg(path: Path) -> None:
     """Create a minimal valid .egg archive."""
     manifest = {
-        "nydus_version": "0.1.0",
-        "egg_version": "2.0",
+        "nydus_version": "0.0.7",
+        "egg_version": "1.0",
         "created_at": datetime.now(UTC).isoformat(),
         "agent_type": "openclaw",
-        "included_modules": [],
-        "source_metadata": {},
     }
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest))

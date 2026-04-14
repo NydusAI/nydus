@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pynydus.agents.letta.hatcher import LettaHatcher
 from pynydus.agents.letta.spawner import LettaSpawner
-from pynydus.api.schemas import MemoryRecord, SkillRecord
+from pynydus.api.schemas import AgentSkill, MemoryRecord
 from pynydus.common.enums import AgentType, MemoryLabel
 
 from conftest import make_egg
@@ -161,7 +161,11 @@ def _rich_egg():
     return make_egg(
         agent_type=AgentType.LETTA,
         skills=[
-            SkillRecord(id="s1", name="greet", agent_type="letta", content="def greet(): pass")
+            AgentSkill(
+                name="greet",
+                body="def greet(): pass",
+                metadata={"id": "skill_001", "source_framework": "letta"},
+            )
         ],
         memory=[
             MemoryRecord(
@@ -336,14 +340,18 @@ class TestLettaParseAF:
     def test_model_config_metadata(self, spawner):
         af = _make_af_fixture()
         result = spawner.parse({"agent.af": json.dumps(af)})
-        assert result.source_metadata.get("letta.llm.model") == "gpt-4o"
-        assert "letta.embedding.embedding_model" in result.source_metadata
+        assert result.llm_model == "gpt-4o"
+        assert result.llm_context_window == 128000
+        assert result.embedding_model == "text-embedding-3-small"
 
     def test_agent_metadata(self, spawner):
         af = _make_af_fixture()
         result = spawner.parse({"agent.af": json.dumps(af)})
-        assert result.source_metadata.get("letta.agent_type") == "letta_v1_agent"
-        assert "letta.tags" in result.source_metadata
+        assert result.agent_name == "research_bot"
+        desc = result.agent_description or ""
+        assert desc.startswith("A bot that helps with ML research.")
+        assert "agent_type=letta_v1_agent" in desc
+        assert "tags=research,ml" in desc
 
     def test_expanded_block_labels(self, spawner):
         """Expanded labels like 'soul', 'about_user', 'scratchpad' map correctly."""
@@ -404,7 +412,7 @@ class TestLettaRender:
     def test_af_output(self, hatcher):
         """Hatcher produces agent.af as primary output."""
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "agent.af" in result.files
         af = json.loads(result.files["agent.af"])
         assert "agents" in af
@@ -413,7 +421,7 @@ class TestLettaRender:
 
     def test_agent_structure(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         agent = af["agents"][0]
         assert agent["name"] == "nydus_agent"
@@ -423,14 +431,14 @@ class TestLettaRender:
 
     def test_system_prompt_in_agent(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         agent = af["agents"][0]
         assert "Be helpful" in agent["system"]
 
     def test_persona_block(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         persona_blocks = [b for b in af["blocks"] if b["label"] == "persona"]
         assert len(persona_blocks) == 1
@@ -438,7 +446,7 @@ class TestLettaRender:
 
     def test_human_block(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         human_blocks = [b for b in af["blocks"] if b["label"] == "human"]
         assert len(human_blocks) == 1
@@ -446,7 +454,7 @@ class TestLettaRender:
 
     def test_tools_as_custom(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         assert len(af["tools"]) >= 1
         tool = af["tools"][0]
@@ -456,14 +464,14 @@ class TestLettaRender:
 
     def test_archival_supplemental(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         entries = json.loads(result.files["archival_memory.json"])
         assert len(entries) >= 1
 
     def test_no_legacy_files(self, hatcher):
         """No legacy agent_state.json, system_prompt.md, or tools/ directory."""
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "agent_state.json" not in result.files
         assert "system_prompt.md" not in result.files
         assert not any(f.startswith("tools/") for f in result.files)
@@ -471,7 +479,7 @@ class TestLettaRender:
 
     def test_credentials_in_env_vars(self, hatcher):
         from pynydus.api.schemas import SecretRecord, SecretsModule
-        from pynydus.common.enums import Bucket, InjectionMode, SecretKind
+        from pynydus.common.enums import InjectionMode, SecretKind
 
         egg = _rich_egg()
         egg.secrets = SecretsModule(
@@ -486,22 +494,21 @@ class TestLettaRender:
                 )
             ]
         )
-        egg.manifest.included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         env_vars = af["agents"][0]["tool_exec_environment_variables"]
         assert env_vars["API_KEY"] == "{{SECRET_001}}"
 
     def test_metadata(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         assert "metadata" in af
         assert af["metadata"]["nydus_source"] == "letta"
 
     def test_empty_egg(self, hatcher):
         egg = make_egg(skills=[], memory=[])
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         af = json.loads(result.files["agent.af"])
         assert af["tools"] == []
         assert af["blocks"] == []

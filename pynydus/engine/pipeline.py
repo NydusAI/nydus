@@ -28,22 +28,21 @@ import pynydus
 from pynydus.api.errors import ConnectorError, GitleaksNotFoundError, NydusfileError
 from pynydus.api.raw_types import ParseResult
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     EggPartial,
     Manifest,
-    McpServerConfig,
+    McpModule,
     MemoryModule,
     MemoryRecord,
     RedactionPolicy,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
     SourceEntry,
 )
 from pynydus.common.enums import (
     AgentType,
-    Bucket,
     InjectionMode,
     MemoryLabel,
     SecretKind,
@@ -169,10 +168,11 @@ def spawn(
         egg = _package_egg(
             ctx,
             skills_module,
+            base_partial.mcp,
             memory_module,
             secrets_module,
-            base_partial.source_metadata,
         )
+        egg = _generate_standards_artifacts(egg, [], ctx)
         logs = {"spawn_log": ctx.spawn_log}
         return egg, base_partial.raw_artifacts, logs
 
@@ -185,7 +185,7 @@ def spawn(
     all_secret_records: list[SecretRecord] = []
     all_pii_records: list[SecretRecord] = []
 
-    for i, (src_type, group_files) in enumerate(groups):
+    for i, (src_type, _source_root, group_files) in enumerate(groups):
         if ctx.source_remove_globs:
             before_keys = set(group_files.keys())
             group_files = _filter_files_by_patterns(group_files, ctx.source_remove_globs)
@@ -215,20 +215,25 @@ def spawn(
             )
             all_pii_records.extend(pii_records)
 
-        groups[i] = (src_type, group_files)
+        groups[i] = (src_type, _source_root, group_files)
 
     # Step 4: Parse sources via spawner connector
     parse_result = _parse_sources(groups, ctx)
 
     # Step 5: Build structured records
     skills_module = _build_skills_module_from_parse(parse_result, ctx.agent_type)
+    mcp_module = _build_mcp_module_from_parse(parse_result)
     memory_module = _build_memory_module_from_parse(parse_result, ctx.agent_type)
 
     ctx.spawn_log.append(
         {
             "type": "records_built",
             "skills": [
-                {"id": s.id, "name": s.name, "source_file": s.metadata.get("source_file")}
+                {
+                    "id": s.metadata.get("id", ""),
+                    "name": s.name,
+                    "source_file": s.metadata.get("source_file"),
+                }
                 for s in skills_module.skills
             ],
             "memory": [
@@ -259,6 +264,7 @@ def spawn(
         secrets_before = len(secrets_module.secrets)
 
         skills_module = _merge_skills(base_partial.skills, skills_module)
+        mcp_module = _merge_mcp(base_partial.mcp, mcp_module)
         memory_module = _merge_memory(base_partial.memory, memory_module)
         secrets_module = _merge_secrets(base_partial.secrets, secrets_module)
 
@@ -292,18 +298,20 @@ def spawn(
         )
 
     # Step 9: Package egg
-    source_metadata = parse_result.source_metadata or {"source_dir": str(ctx.nydusfile_dir)}
-
     egg = _package_egg(
         ctx,
         skills_module,
+        mcp_module,
         memory_module,
         secrets_module,
-        source_metadata,
+        parse_result=parse_result,
     )
 
+    # Step 10: Generate standards artifacts + stash apm.yml
+    egg = _generate_standards_artifacts(egg, groups, ctx)
+
     raw_artifacts: dict[str, str] = {}
-    for _src_type, group_files in groups:
+    for _src_type, _root, group_files in groups:
         raw_artifacts.update(group_files)
 
     logs = {"spawn_log": ctx.spawn_log}
@@ -364,7 +372,7 @@ def _resolve_base_egg(
 
     base = load_base_egg(base_ref)
     partial = merge(base, ctx.merge_ops, base_dir=ctx.nydusfile_dir)
-    partial.source_metadata["base_egg"] = ctx.base_egg
+    # base_egg is set on Manifest directly by _package_egg via ctx.base_egg
 
     ctx.spawn_log.append(
         {
@@ -425,14 +433,14 @@ def _pull_registry_egg(ref: str) -> str:
 
 def _read_source_files(
     ctx: PipelineContext,
-) -> list[tuple[AgentType, dict[str, str]]]:
+) -> list[tuple[AgentType, Path, dict[str, str]]]:
     """Read source files into independent per-group dicts.
 
-    Returns at most one ``(agent_type, files)`` tuple (at most one SOURCE).
+    Returns at most one ``(agent_type, source_root, files)`` tuple (at most one SOURCE).
     Each group's dict has bare filename keys and is independent: no merging
     is performed here.
     """
-    groups: list[tuple[AgentType, dict[str, str]]] = []
+    groups: list[tuple[AgentType, Path, dict[str, str]]] = []
 
     for src in ctx.sources:
         expanded = Path(src.path).expanduser()
@@ -445,7 +453,7 @@ def _read_source_files(
         spawner = _get_spawner(at)
         patterns = getattr(spawner, "FILE_PATTERNS", ["*.md", "*.json", "*.yaml", "*.yml", "*.txt"])
         src_files = _read_files_from_path(resolved, patterns)
-        groups.append((at, src_files))
+        groups.append((at, resolved, src_files))
 
         ctx.spawn_log.append(
             {
@@ -622,7 +630,7 @@ def _get_spawner(agent_type: AgentType):  # noqa: ANN202
 
 
 def _parse_sources(
-    source_groups: list[tuple[AgentType, dict[str, str]]],
+    source_groups: list[tuple[AgentType, Path, dict[str, str]]],
     ctx: PipelineContext,
 ) -> ParseResult:
     """Parse redacted files, dispatching each source group to its own spawner.
@@ -632,7 +640,7 @@ def _parse_sources(
     """
     combined = ParseResult()
 
-    for src_type, group_files in source_groups:
+    for src_type, _source_root, group_files in source_groups:
         spawner = _get_spawner(src_type)
         if not hasattr(spawner, "parse"):
             raise ConnectorError(f"Spawner {type(spawner).__name__} does not implement parse()")
@@ -642,7 +650,17 @@ def _parse_sources(
         combined.skills.extend(result.skills)
         combined.memory.extend(result.memory)
         combined.mcp_configs.update(result.mcp_configs)
-        combined.source_metadata.update(result.source_metadata)
+        # Carry forward neutral metadata from last spawner that populated them
+        if result.agent_name:
+            combined.agent_name = result.agent_name
+        if result.agent_description:
+            combined.agent_description = result.agent_description
+        if result.llm_model:
+            combined.llm_model = result.llm_model
+        if result.llm_context_window is not None:
+            combined.llm_context_window = result.llm_context_window
+        if result.embedding_model:
+            combined.embedding_model = result.embedding_model
 
         ctx.spawn_log.append(
             {
@@ -657,7 +675,6 @@ def _parse_sources(
                     }
                     for m in result.memory
                 ],
-                "source_metadata": dict(result.source_metadata),
             }
         )
 
@@ -673,21 +690,29 @@ def _build_skills_module_from_parse(
     parse_result: ParseResult,
     agent_type: AgentType,
 ) -> SkillsModule:
-    """Convert ParseResult skills into SkillRecord objects."""
-    skills: list[SkillRecord] = []
+    """Convert ParseResult skills into AgentSkill objects."""
+    skills: list[AgentSkill] = []
     for i, rs in enumerate(parse_result.skills, start=1):
+        meta: dict[str, str] = {
+            "id": f"skill_{i:03d}",
+            "source_framework": str(agent_type),
+        }
+        if rs.source_file:
+            meta["source_file"] = rs.source_file
         skills.append(
-            SkillRecord(
-                id=f"skill_{i:03d}",
+            AgentSkill(
                 name=rs.name,
-                agent_type=agent_type,
-                content=rs.content,
-                metadata={"source_file": rs.source_file} if rs.source_file else {},
+                body=rs.content,
+                metadata=meta,
             )
         )
 
-    mcp_configs = {name: McpServerConfig(**cfg) for name, cfg in parse_result.mcp_configs.items()}
-    return SkillsModule(skills=skills, mcp_configs=mcp_configs)
+    return SkillsModule(skills=skills)
+
+
+def _build_mcp_module_from_parse(parse_result: ParseResult) -> McpModule:
+    """Build McpModule from ParseResult's raw MCP config dicts."""
+    return McpModule(configs=dict(parse_result.mcp_configs))
 
 
 def _build_memory_module_from_parse(
@@ -707,7 +732,6 @@ def _build_memory_module_from_parse(
                 source_store=rm.source_file or "unknown",
                 skill_ref=rm.skill_ref,
                 timestamp=rm.timestamp,
-                metadata={"source_file": rm.source_file} if rm.source_file else {},
             )
         )
     return MemoryModule(memory=memory)
@@ -722,10 +746,15 @@ def _merge_skills(base: SkillsModule, extracted: SkillsModule) -> SkillsModule:
     """Combine base egg skills with freshly extracted skills, re-numbering IDs."""
     combined = list(base.skills) + list(extracted.skills)
     for i, skill in enumerate(combined, start=1):
-        skill.id = f"skill_{i:03d}"
-    mcp = dict(base.mcp_configs)
-    mcp.update(extracted.mcp_configs)
-    return SkillsModule(skills=combined, mcp_configs=mcp)
+        skill.metadata["id"] = f"skill_{i:03d}"
+    return SkillsModule(skills=combined)
+
+
+def _merge_mcp(base: McpModule, extracted: McpModule) -> McpModule:
+    """Merge MCP server configs from base egg and parsed source."""
+    merged = dict(base.configs)
+    merged.update(extracted.configs)
+    return McpModule(configs=merged)
 
 
 def _merge_memory(base: MemoryModule, extracted: MemoryModule) -> MemoryModule:
@@ -822,36 +851,42 @@ def _drop_memory_records_with_excluded_labels(
 def _package_egg(
     ctx: PipelineContext,
     skills: SkillsModule,
+    mcp: McpModule,
     memory: MemoryModule,
     secrets: SecretsModule,
-    source_metadata: dict[str, str],
+    parse_result: ParseResult | None = None,
 ) -> Egg:
-    """Construct the final Egg with manifest."""
-    included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
-
+    """Construct the final Egg with manifest and neutral metadata fields."""
     sources: list[SourceEntry] = [
         SourceEntry(agent_type=src.agent_type, source_path=src.path) for src in ctx.sources
     ]
 
     manifest = Manifest(
         nydus_version=pynydus.__version__,
-        min_nydus_version="0.2.0" if ctx.base_egg else "0.1.0",
+        min_nydus_version="0.0.7",
         egg_version=pynydus.EGG_SPEC_VERSION,
         created_at=datetime.now(UTC),
         agent_type=ctx.agent_type,
-        included_modules=included_modules,
         redaction_policy=RedactionPolicy(
             pii_redacted=ctx.redact,
             secrets_placeholder_only=ctx.redact,
         ),
         base_egg=ctx.base_egg,
-        source_metadata=source_metadata,
+        source_dir=str(ctx.nydusfile_dir),
         sources=sources,
     )
+
+    if parse_result:
+        manifest.agent_name = parse_result.agent_name
+        manifest.agent_description = parse_result.agent_description
+        manifest.llm_model = parse_result.llm_model
+        manifest.llm_context_window = parse_result.llm_context_window
+        manifest.embedding_model = parse_result.embedding_model
 
     egg = Egg(
         manifest=manifest,
         skills=skills,
+        mcp=mcp,
         memory=memory,
         secrets=secrets,
     )
@@ -863,8 +898,135 @@ def _package_egg(
             "skills": len(skills.skills),
             "memory": len(memory.memory),
             "secrets": len(secrets.secrets),
-            "source_metadata": dict(source_metadata),
         }
     )
 
     return egg
+
+
+# ---------------------------------------------------------------------------
+# Step 10 helpers: Standards artifact generation
+# ---------------------------------------------------------------------------
+
+
+def _stash_apm(
+    groups: list[tuple[AgentType, Path, dict[str, str]]],
+    ctx: PipelineContext,
+) -> str | None:
+    """Find and return apm.yml content from source files (passthrough)."""
+    for _src_type, source_root, group_files in groups:
+        if "apm.yml" in group_files:
+            ctx.spawn_log.append({"type": "apm_passthrough", "source": "apm.yml"})
+            return group_files["apm.yml"]
+        apm_path = source_root / "apm.yml"
+        if apm_path.is_file():
+            ctx.spawn_log.append({"type": "apm_passthrough", "source": str(apm_path)})
+            return apm_path.read_text(encoding="utf-8")
+    return None
+
+
+def _resolve_a2a_card(
+    groups: list[tuple[AgentType, Path, dict[str, str]]],
+    egg: Egg,
+    ctx: PipelineContext,
+) -> dict | None:
+    """Return A2A card: passthrough from source or generate from egg."""
+    import json
+
+    from pynydus.standards import a2a
+
+    for _src_type, source_root, group_files in groups:
+        if "agent-card.json" in group_files:
+            try:
+                ctx.spawn_log.append({"type": "a2a_passthrough", "source": "agent-card.json"})
+                return json.loads(group_files["agent-card.json"])
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse agent-card.json from source, will generate")
+            break
+        card_path = source_root / "agent-card.json"
+        if card_path.is_file():
+            try:
+                ctx.spawn_log.append({"type": "a2a_passthrough", "source": str(card_path)})
+                return json.loads(card_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse agent-card.json from source, will generate")
+            break
+
+    if egg.a2a_card is not None:
+        return None
+
+    card_files = a2a.generate(egg)
+    if "agent-card.json" in card_files:
+        ctx.spawn_log.append({"type": "a2a_generated"})
+        return json.loads(card_files["agent-card.json"])
+    return None
+
+
+def _embed_spec_snapshots(ctx: PipelineContext) -> dict[str, str] | None:
+    """Load spec markdown files and build the snapshots dict with manifest.json."""
+    import json
+    import re
+
+    from pynydus.standards import load_spec
+
+    spec_snapshots: dict[str, str] = {}
+    spec_versions: dict[str, dict[str, str]] = {}
+    for spec_name in ("mcp", "agentskills", "a2a", "apm", "agents"):
+        try:
+            md_text, _schema = load_spec(spec_name)
+            spec_snapshots[f"{spec_name}.md"] = md_text
+            version_match = re.search(r"Spec version:\s*(.+)", md_text)
+            source_match = re.search(r"Source:\s*(.+)", md_text)
+            spec_versions[spec_name] = {
+                "version": version_match.group(1).strip() if version_match else "unknown",
+                "source": source_match.group(1).strip() if source_match else "unknown",
+            }
+        except FileNotFoundError:
+            logger.warning("Spec file not found: %s.md", spec_name)
+
+    if not spec_snapshots:
+        return None
+
+    spec_snapshots["manifest.json"] = json.dumps(
+        {"nydus_version": pynydus.__version__, "specs": spec_versions},
+        indent=2,
+    )
+    ctx.spawn_log.append(
+        {"type": "specs_embedded", "specs": list(spec_snapshots.keys())}
+    )
+    return spec_snapshots
+
+
+def _generate_standards_artifacts(
+    egg: Egg,
+    groups: list[tuple[AgentType, Path, dict[str, str]]],
+    ctx: PipelineContext,
+) -> Egg:
+    """Generate A2A card, AGENTS.md, spec snapshots, and stash apm.yml.
+
+    Mutates nothing — returns a new Egg via ``model_copy()``.
+    """
+    from pynydus.standards import agents_md
+
+    updates: dict = {}
+
+    apm = _stash_apm(groups, ctx)
+    if apm is not None:
+        updates["apm_yml"] = apm
+
+    card = _resolve_a2a_card(groups, egg.model_copy(update=updates), ctx)
+    if card is not None:
+        updates["a2a_card"] = card
+
+    temp_egg = egg.model_copy(update=updates)
+    if temp_egg.agents_md is None:
+        md_files = agents_md.generate(temp_egg)
+        if "AGENTS.md" in md_files:
+            updates["agents_md"] = md_files["AGENTS.md"]
+            ctx.spawn_log.append({"type": "agents_md_generated"})
+
+    snapshots = _embed_spec_snapshots(ctx)
+    if snapshots is not None:
+        updates["spec_snapshots"] = snapshots
+
+    return egg.model_copy(update=updates)

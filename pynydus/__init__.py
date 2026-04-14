@@ -11,33 +11,33 @@ Attributes:
 from __future__ import annotations
 
 from pynydus.api.schemas import (
+    AgentSkill,
     DiffReport,
     Egg,
     HatchResult,
     Manifest,
-    McpServerConfig,
+    McpModule,
     MemoryRecord,
     SecretRecord,
-    SkillRecord,
     ValidationReport,
 )
 from pynydus.client.client import Nydus
 from pynydus.common.enums import HatchMode
 
-__version__ = "0.5.0"
-EGG_SPEC_VERSION = "2.0"
+__version__ = "0.0.7"
+EGG_SPEC_VERSION = "1.0"
 
 __all__ = [
+    "AgentSkill",
     "DiffReport",
     "EGG_SPEC_VERSION",
     "Egg",
     "HatchMode",
     "HatchResult",
     "Manifest",
-    "McpServerConfig",
+    "McpModule",
     "MemoryRecord",
     "Nydus",
     "SecretRecord",
-    "SkillRecord",
     "ValidationReport",
 ]

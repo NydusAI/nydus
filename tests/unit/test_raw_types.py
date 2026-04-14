@@ -59,7 +59,7 @@ class TestParseResult:
     def test_serialization_roundtrip(self):
         r = ParseResult(
             skills=[RawSkill(name="s", content="c")],
-            source_metadata={"agent": "test"},
+            agent_name="test-agent",
         )
         data = r.model_dump()
         r2 = ParseResult.model_validate(data)

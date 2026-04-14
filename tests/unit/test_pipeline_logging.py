@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from pynydus.api.schemas import (
+    AgentSkill,
     MemoryModule,
     MemoryRecord,
+    McpModule,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import AgentType, MemoryLabel
@@ -117,7 +118,11 @@ class TestRecordsBuiltLogging:
             {
                 "type": "records_built",
                 "skills": [
-                    {"id": s.id, "name": s.name, "source_file": s.metadata.get("source_file")}
+                    {
+                        "id": s.metadata.get("id", ""),
+                        "name": s.name,
+                        "source_file": s.metadata.get("source_file"),
+                    }
                     for s in skills_module.skills
                 ],
                 "memory": [
@@ -150,10 +155,24 @@ class TestBaseMergeLogging:
         ctx = _make_ctx(tmp_path)
 
         base_skills = SkillsModule(
-            skills=[SkillRecord(id="s1", name="base_skill", agent_type="x", content="c")]
+            skills=[
+                AgentSkill(
+                    name="base_skill",
+                    description="",
+                    body="c",
+                    metadata={"id": "s1", "source_framework": "x"},
+                )
+            ]
         )
         ext_skills = SkillsModule(
-            skills=[SkillRecord(id="s2", name="new_skill", agent_type="x", content="c")]
+            skills=[
+                AgentSkill(
+                    name="new_skill",
+                    description="",
+                    body="c",
+                    metadata={"id": "s2", "source_framework": "x"},
+                )
+            ]
         )
         base_memory = MemoryModule(
             memory=[
@@ -326,7 +345,14 @@ class TestEggPackagedLogging:
     def test_packaging_logged(self, tmp_path: Path):
         ctx = _make_ctx(tmp_path)
         skills = SkillsModule(
-            skills=[SkillRecord(id="s1", name="test", agent_type="x", content="c")]
+            skills=[
+                AgentSkill(
+                    name="test",
+                    description="",
+                    body="c",
+                    metadata={"id": "s1", "source_framework": "x"},
+                )
+            ]
         )
         memory = MemoryModule(
             memory=[
@@ -340,9 +366,8 @@ class TestEggPackagedLogging:
             ]
         )
         secrets = SecretsModule(secrets=[])
-        metadata = {"source_dir": str(tmp_path)}
 
-        _package_egg(ctx, skills, memory, secrets, metadata)
+        _package_egg(ctx, skills, McpModule(), memory, secrets)
 
         entries = [e for e in ctx.spawn_log if e["type"] == "egg_packaged"]
         assert len(entries) == 1

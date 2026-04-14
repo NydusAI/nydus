@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pynydus.agents.openclaw.hatcher import OpenClawHatcher
 from pynydus.agents.openclaw.spawner import OpenClawSpawner
 from pynydus.api.errors import HatchError
-from pynydus.api.schemas import MemoryRecord, SkillRecord
+from pynydus.api.schemas import AgentSkill, MemoryRecord
 from pynydus.common.enums import MemoryLabel
 
 from conftest import make_egg
@@ -38,7 +40,13 @@ def oc_files():
 
 def _rich_egg():
     return make_egg(
-        skills=[SkillRecord(id="s1", name="greet", agent_type="openclaw", content="Say hello.")],
+        skills=[
+            AgentSkill(
+                name="greet",
+                body="Say hello.",
+                metadata={"id": "skill_001", "source_framework": "openclaw"},
+            )
+        ],
         memory=[
             MemoryRecord(
                 id="m1",
@@ -78,9 +86,15 @@ def _rich_egg_with_splits():
 
     return make_egg(
         skills=[
-            SkillRecord(id="s1", name="greet", agent_type="openclaw", content="Say hello."),
-            SkillRecord(
-                id="s2", name="search hotels", agent_type="openclaw", content="Find hotels."
+            AgentSkill(
+                name="greet",
+                body="Say hello.",
+                metadata={"id": "skill_001", "source_framework": "openclaw"},
+            ),
+            AgentSkill(
+                name="search hotels",
+                body="Find hotels.",
+                metadata={"id": "skill_002", "source_framework": "openclaw"},
             ),
         ],
         memory=[
@@ -149,7 +163,13 @@ def _rich_egg_with_splits():
 def _cross_platform_egg():
     """Egg from a non-OpenClaw source (e.g. Letta): no OpenClaw source_store hints."""
     return make_egg(
-        skills=[SkillRecord(id="s1", name="analyze", agent_type="letta", content="Analyze data.")],
+        skills=[
+            AgentSkill(
+                name="analyze",
+                body="Analyze data.",
+                metadata={"id": "skill_001", "source_framework": "letta"},
+            )
+        ],
         memory=[
             MemoryRecord(
                 id="m1",
@@ -249,7 +269,7 @@ class TestOpenClawParse:
 class TestOpenClawRender:
     def test_canonical_filenames(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "SOUL.md" in result.files
         assert "AGENTS.md" in result.files
         assert "USER.md" in result.files
@@ -263,18 +283,18 @@ class TestOpenClawRender:
 
     def test_skill_per_file(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "Say hello." in result.files["skills/greet.md"]
 
     def test_multiple_skills_separate_files(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "skills/greet.md" in result.files
         assert "skills/search-hotels.md" in result.files
 
     def test_identity_split(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "SOUL.md" in result.files
         assert "IDENTITY.md" in result.files
         assert "Atlas" in result.files["IDENTITY.md"]
@@ -282,7 +302,7 @@ class TestOpenClawRender:
 
     def test_tools_split(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "USER.md" in result.files
         assert "TOOLS.md" in result.files
         assert "api.example.com" in result.files["TOOLS.md"]
@@ -290,7 +310,7 @@ class TestOpenClawRender:
 
     def test_dated_memory(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "MEMORY.md" in result.files
         assert "memory/2026-01-15.md" in result.files
         assert "memory/2026-01-16.md" in result.files
@@ -299,7 +319,7 @@ class TestOpenClawRender:
 
     def test_cross_platform_fallback(self, hatcher):
         egg = _cross_platform_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "SOUL.md" in result.files
         assert "AGENTS.md" in result.files
         assert "USER.md" in result.files
@@ -310,7 +330,7 @@ class TestOpenClawRender:
 
     def test_credentials(self, hatcher):
         from pynydus.api.schemas import SecretRecord, SecretsModule
-        from pynydus.common.enums import Bucket, InjectionMode, SecretKind
+        from pynydus.common.enums import InjectionMode, SecretKind
 
         egg = _rich_egg()
         egg.secrets = SecretsModule(
@@ -325,11 +345,10 @@ class TestOpenClawRender:
                 )
             ]
         )
-        egg.manifest.included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "{{SECRET_001}}" in result.files["config.json"]
 
     def test_empty_raises(self, hatcher):
         egg = make_egg(skills=[], memory=[])
         with pytest.raises(HatchError):
-            hatcher.render(egg)
+            hatcher.render(egg, Path("."))

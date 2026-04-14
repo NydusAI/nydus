@@ -11,20 +11,21 @@ from pathlib import Path
 
 from pynydus.api.errors import HatchError, NydusfileError
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     EggPartial,
+    McpModule,
     MemoryModule,
     MemoryRecord,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import (
-    Bucket,
     Directive,
     InjectionMode,
     MemoryLabel,
+    ModuleType,
     SecretKind,
 )
 from pynydus.engine.nydusfile import MergeOp
@@ -71,9 +72,9 @@ def merge(
     """
     partial = EggPartial(
         skills=SkillsModule(skills=list(base_egg.skills.skills)),
+        mcp=McpModule(configs=dict(base_egg.mcp.configs)),
         memory=MemoryModule(memory=list(base_egg.memory.memory)),
         secrets=SecretsModule(secrets=list(base_egg.secrets.secrets)),
-        source_metadata=dict(base_egg.manifest.source_metadata),
     )
 
     for op in ops:
@@ -91,7 +92,7 @@ def merge(
 
 def _apply_add(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
     """Add a new record to the specified bucket."""
-    if op.bucket is Bucket.MEMORY:
+    if op.bucket is ModuleType.MEMORY:
         text = _resolve_value(op.value, base_dir)
         label_str = _extract_label_from_key(op.key) if op.key else None
         try:
@@ -109,20 +110,19 @@ def _apply_add(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
             )
         )
 
-    elif op.bucket is Bucket.SKILL:
+    elif op.bucket is ModuleType.SKILL:
         text = _resolve_value(op.value, base_dir)
         name = op.key if op.key else _infer_skill_name(op.value)
         next_id = f"skill_{len(partial.skills.skills) + 1:03d}"
         partial.skills.skills.append(
-            SkillRecord(
-                id=next_id,
+            AgentSkill(
                 name=name,
-                agent_type="merge_add",
-                content=text,
+                body=text,
+                metadata={"id": next_id, "source_framework": "merge_add"},
             )
         )
 
-    elif op.bucket is Bucket.SECRET:
+    elif op.bucket is ModuleType.SECRET:
         name = op.value.strip()
         next_id = f"secret_{len(partial.secrets.secrets) + 1:03d}"
         placeholder = f"{{{{{name}}}}}"
@@ -145,16 +145,16 @@ def _apply_set(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
     new_text = _resolve_value(op.value, base_dir)
     matched = False
 
-    if op.bucket is Bucket.MEMORY:
+    if op.bucket is ModuleType.MEMORY:
         for i, rec in enumerate(partial.memory.memory):
             if _matches_selector(rec, selector_key, selector_val):
                 partial.memory.memory[i] = rec.model_copy(update={"text": new_text})
                 matched = True
 
-    elif op.bucket is Bucket.SKILL:
+    elif op.bucket is ModuleType.SKILL:
         for i, rec in enumerate(partial.skills.skills):
             if _matches_selector(rec, selector_key, selector_val):
-                partial.skills.skills[i] = rec.model_copy(update={"content": new_text})
+                partial.skills.skills[i] = rec.model_copy(update={"body": new_text})
                 matched = True
 
     if not matched:
@@ -165,7 +165,7 @@ def _apply_set(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
 
 def _apply_remove(partial: EggPartial, op: MergeOp) -> None:
     """Remove records matching the key/selector."""
-    if op.bucket is Bucket.MEMORY:
+    if op.bucket is ModuleType.MEMORY:
         if "=" in op.key:
             selector_key, selector_val = _parse_selector(op.key)
             partial.memory.memory = [
@@ -176,12 +176,14 @@ def _apply_remove(partial: EggPartial, op: MergeOp) -> None:
         else:
             partial.memory.memory = [r for r in partial.memory.memory if r.id != op.key]
 
-    elif op.bucket is Bucket.SKILL:
+    elif op.bucket is ModuleType.SKILL:
         partial.skills.skills = [
-            s for s in partial.skills.skills if s.name != op.key and s.id != op.key
+            s
+            for s in partial.skills.skills
+            if s.name != op.key and s.metadata.get("id", "") != op.key
         ]
 
-    elif op.bucket is Bucket.SECRET:
+    elif op.bucket is ModuleType.SECRET:
         partial.secrets.secrets = [
             s for s in partial.secrets.secrets if s.name != op.key and s.id != op.key
         ]

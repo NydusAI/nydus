@@ -46,7 +46,13 @@ class ParseResult(BaseModel):
     memory: list[RawMemory] = Field(default_factory=list)
     mcp_configs: dict[str, dict] = Field(default_factory=dict)
     """MCP server configs discovered during parsing, keyed by server name."""
-    source_metadata: dict[str, str] = Field(default_factory=dict)
+
+    # Neutral metadata fields (spawners populate what they can)
+    agent_name: str | None = None
+    agent_description: str | None = None
+    llm_model: str | None = None
+    llm_context_window: int | None = None
+    embedding_model: str | None = None
 
 
 class RenderResult(BaseModel):

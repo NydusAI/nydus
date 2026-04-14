@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from pynydus.agents.zeroclaw.hatcher import ZeroClawHatcher
 from pynydus.agents.zeroclaw.spawner import ZeroClawSpawner
-from pynydus.api.schemas import MemoryRecord, SkillRecord
+from pynydus.api.schemas import AgentSkill, MemoryRecord
 from pynydus.common.enums import MemoryLabel
 
 from conftest import make_egg
@@ -45,7 +45,11 @@ def zc_files():
 def _rich_egg():
     return make_egg(
         skills=[
-            SkillRecord(id="s1", name="search", agent_type="zeroclaw", content="def search(): pass")
+            AgentSkill(
+                name="search",
+                body="def search(): pass",
+                metadata={"id": "skill_001", "source_framework": "zeroclaw"},
+            )
         ],
         memory=[
             MemoryRecord(
@@ -84,11 +88,15 @@ def _rich_egg_with_splits():
     """Egg with IDENTITY, TOOLS, dated memory: tests file-splitting logic."""
     return make_egg(
         skills=[
-            SkillRecord(
-                id="s1", name="search web", agent_type="zeroclaw", content="def search(): pass"
+            AgentSkill(
+                name="search web",
+                body="def search(): pass",
+                metadata={"id": "skill_001", "source_framework": "zeroclaw"},
             ),
-            SkillRecord(
-                id="s2", name="file read", agent_type="zeroclaw", content="def file_read(): pass"
+            AgentSkill(
+                name="file read",
+                body="def file_read(): pass",
+                metadata={"id": "skill_002", "source_framework": "zeroclaw"},
             ),
         ],
         memory=[
@@ -158,7 +166,11 @@ def _cross_platform_egg():
     """Egg from a non-ZeroClaw source (e.g. Letta): no ZeroClaw source_store hints."""
     return make_egg(
         skills=[
-            SkillRecord(id="s1", name="analyze", agent_type="letta", content="def analyze(): pass")
+            AgentSkill(
+                name="analyze",
+                body="def analyze(): pass",
+                metadata={"id": "skill_001", "source_framework": "letta"},
+            )
         ],
         memory=[
             MemoryRecord(
@@ -253,7 +265,8 @@ class TestZeroClawParse:
 
     def test_config_toml(self, spawner, zc_files):
         result = spawner.parse(zc_files)
-        assert "zeroclaw.agent.model" in result.source_metadata
+        assert result.llm_model == "claude-3"
+        assert result.agent_name == "zc-agent"
 
     def test_empty(self, spawner):
         result = spawner.parse({})
@@ -284,7 +297,8 @@ class TestZeroClawParse:
     def test_config_toml_malformed(self, spawner):
         files = {"config.toml": "[[[ bad toml"}
         result = spawner.parse(files)
-        assert result.source_metadata == {} or isinstance(result.source_metadata, dict)
+        assert result.agent_name is None
+        assert result.llm_model is None
 
 
 class TestZeroClawParseDB:
@@ -320,23 +334,23 @@ class TestZeroClawParseDB:
 class TestZeroClawRender:
     def test_filenames(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         for f in ("persona.md", "knowledge.md", "agents.md", "user.md"):
             assert f in result.files
 
     def test_zeroclaw_marker(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert ".zeroclaw/.keep" in result.files
 
     def test_tools(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert any(f.startswith("tools/") for f in result.files)
 
     def test_identity_split(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "persona.md" in result.files
         assert "identity.md" in result.files
         assert "ZeroClaw Agent v2" in result.files["identity.md"]
@@ -344,7 +358,7 @@ class TestZeroClawRender:
 
     def test_tools_split(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "user.md" in result.files
         assert "tools.md" in result.files
         assert "Rate limit" in result.files["tools.md"]
@@ -352,7 +366,7 @@ class TestZeroClawRender:
 
     def test_dated_memory(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "knowledge.md" in result.files
         assert "memory/2026-03-15.md" in result.files
         assert "memory/2026-03-17.md" in result.files
@@ -361,7 +375,7 @@ class TestZeroClawRender:
 
     def test_cross_platform_fallback(self, hatcher):
         egg = _cross_platform_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "persona.md" in result.files
         assert "agents.md" in result.files
         assert "user.md" in result.files
@@ -372,7 +386,7 @@ class TestZeroClawRender:
 
     def test_credentials_toml(self, hatcher):
         from pynydus.api.schemas import SecretRecord, SecretsModule
-        from pynydus.common.enums import Bucket, InjectionMode, SecretKind
+        from pynydus.common.enums import InjectionMode, SecretKind
 
         egg = _rich_egg()
         egg.secrets = SecretsModule(
@@ -387,20 +401,17 @@ class TestZeroClawRender:
                 )
             ]
         )
-        egg.manifest.included_modules = [Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET]
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "config.toml" in result.files
         assert "config.json" not in result.files
         assert "{{SECRET_001}}" in result.files["config.toml"]
         assert "API_KEY" in result.files["config.toml"]
 
-    def test_source_metadata_roundtrip(self, hatcher):
+    def test_manifest_neutral_fields_roundtrip(self, hatcher):
         egg = _rich_egg()
-        egg.manifest.source_metadata = {
-            "zeroclaw.agent.name": "zc-agent",
-            "zeroclaw.agent.model": "claude-3",
-        }
-        result = hatcher.render(egg)
+        egg.manifest.agent_name = "zc-agent"
+        egg.manifest.llm_model = "claude-3"
+        result = hatcher.render(egg, Path("."))
         assert "config.toml" in result.files
         toml = result.files["config.toml"]
         assert 'name = "zc-agent"' in toml
@@ -408,20 +419,20 @@ class TestZeroClawRender:
 
     def test_multiple_skills_separate_files(self, hatcher):
         egg = _rich_egg_with_splits()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert "tools/search_web.py" in result.files
         assert "tools/file_read.py" in result.files
 
     def test_empty_produces_marker_only(self, hatcher):
         egg = make_egg(skills=[], memory=[])
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         assert ".zeroclaw/.keep" in result.files
         md_files = [f for f in result.files if f.endswith(".md")]
         assert len(md_files) == 0
 
     def test_no_uppercase_filenames(self, hatcher):
         egg = _rich_egg()
-        result = hatcher.render(egg)
+        result = hatcher.render(egg, Path("."))
         md_files = [f for f in result.files if f.endswith(".md")]
         for f in md_files:
             basename = f.split("/")[-1]

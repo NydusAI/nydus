@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 from pynydus.api.errors import NydusfileError
-from pynydus.api.schemas import MemoryModule, MemoryRecord, SkillRecord, SkillsModule
+from pynydus.api.schemas import AgentSkill, MemoryModule, MemoryRecord, SkillsModule
 from pynydus.common.enums import AgentType, MemoryLabel, SecretKind
 from pynydus.engine.nydusfile import NydusfileConfig, SourceDirective
 from pynydus.engine.pipeline import spawn
@@ -120,11 +120,11 @@ class TestBaseEggMerge:
         base_partial = EggPartial(
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="base_s1",
+                    AgentSkill(
                         name="base_skill",
-                        agent_type="openclaw",
-                        content="Base content.",
+                        description="",
+                        body="Base content.",
+                        metadata={"id": "base_s1", "source_framework": "openclaw"},
                     ),
                 ]
             ),
@@ -140,7 +140,6 @@ class TestBaseEggMerge:
                 ]
             ),
             secrets=SecretsModule(),
-            source_metadata={"base_egg": "test.egg"},
             raw_artifacts={},
         )
         mock_resolve.return_value = (base_partial, AgentType.OPENCLAW)
@@ -163,7 +162,7 @@ class TestBaseEggMerge:
         config = _oc_config(src, redact=False)
         egg, _, _ = spawn(config, nydusfile_dir=src.parent)
         assert egg.manifest.base_egg is None
-        assert egg.manifest.min_nydus_version == "0.1.0"
+        assert egg.manifest.min_nydus_version == "0.0.7"
 
 
 class TestDirectives:

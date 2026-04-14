@@ -21,7 +21,6 @@ Parses a ZeroClaw workspace directory containing:
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 import sys
 
@@ -36,10 +35,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pynydus.api.errors import ConnectorError
+from pynydus.api.protocols import Spawner
 from pynydus.api.raw_types import (
     ParseResult,
     RawMemory,
     RawSkill,
+)
+from pynydus.common.connector_utils import (
+    extract_date_from_filename as _extract_date_from_filename,
 )
 from pynydus.common.connector_utils import (
     parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
@@ -74,7 +77,7 @@ FILE_PATTERNS = [
 """Glob patterns the pipeline uses to read source files from disk."""
 
 
-class ZeroClawSpawner:
+class ZeroClawSpawner(Spawner):
     """Parse a ZeroClaw project directory."""
 
     FILE_PATTERNS = FILE_PATTERNS
@@ -86,17 +89,19 @@ class ZeroClawSpawner:
             files: ``filename -> UTF-8 content`` (already redacted).
 
         Returns:
-            Skills, memory, MCP configs, and source metadata.
+            Skills, memory, MCP configs, and neutral metadata when present in config.
         """
         skills = self._parse_skills(files)
         memories = self._parse_memories(files)
         mcp_configs = self._parse_mcp_configs(files)
-        source_metadata = self._parse_source_metadata(files)
+        agent_name, agent_description, llm_model = _parse_neutral_metadata_from_toml(files)
         return ParseResult(
             skills=skills,
             memory=memories,
             mcp_configs=mcp_configs,
-            source_metadata=source_metadata,
+            agent_name=agent_name,
+            agent_description=agent_description,
+            llm_model=llm_model,
         )
 
     def parse_db(
@@ -112,7 +117,7 @@ class ZeroClawSpawner:
             supplemental_files: Additional text files to parse alongside the DB.
 
         Returns:
-            Skills, memory, MCP configs, and source metadata.
+            Skills, memory, MCP configs, and neutral metadata from supplemental files.
         """
         try:
             conn = sqlite3.connect(str(db_path))
@@ -162,7 +167,12 @@ class ZeroClawSpawner:
             result.skills = supp.skills
             result.memory.extend(supp.memory)
             result.mcp_configs = supp.mcp_configs
-            result.source_metadata = supp.source_metadata
+            if supp.agent_name:
+                result.agent_name = supp.agent_name
+            if supp.agent_description:
+                result.agent_description = supp.agent_description
+            if supp.llm_model:
+                result.llm_model = supp.llm_model
 
         return result
 
@@ -271,41 +281,39 @@ class ZeroClawSpawner:
     def _parse_mcp_configs(files: dict[str, str]) -> dict[str, dict]:
         return _parse_mcp_configs_from_files(files)
 
-    @staticmethod
-    def _parse_source_metadata(files: dict[str, str]) -> dict[str, str]:
-        """Extract source metadata from config.toml if present."""
-        metadata: dict[str, str] = {}
-        toml_content = files.get("config.toml", "")
-        if toml_content and tomllib is not None:
-            try:
-                data = tomllib.loads(toml_content)
-                for key in ("model", "version", "name", "description"):
-                    val = data.get(key)
-                    if val and isinstance(val, str):
-                        metadata[f"zeroclaw.{key}"] = val
-                agent = data.get("agent", {})
-                if isinstance(agent, dict):
-                    for key in ("model", "name"):
-                        val = agent.get(key)
-                        if val and isinstance(val, str):
-                            metadata[f"zeroclaw.agent.{key}"] = val
-            except Exception:
-                pass
-        return metadata
 
-
-_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
-
-
-def _extract_date_from_filename(name: str) -> datetime | None:
-    """Extract a YYYY-MM-DD date from a filename like ``memory/2026-03-15.md``."""
-    m = _DATE_RE.search(name)
-    if m:
-        try:
-            return datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            return None
-    return None
+def _parse_neutral_metadata_from_toml(
+    files: dict[str, str],
+) -> tuple[str | None, str | None, str | None]:
+    """Map config.toml fields into neutral ParseResult metadata."""
+    toml_content = files.get("config.toml", "")
+    if not toml_content or tomllib is None:
+        return None, None, None
+    try:
+        data = tomllib.loads(toml_content)
+    except (ValueError, KeyError):
+        return None, None, None
+    agent_name = None
+    agent_description = None
+    llm_model = None
+    top_name = data.get("name")
+    if isinstance(top_name, str) and top_name:
+        agent_name = top_name
+    top_desc = data.get("description")
+    if isinstance(top_desc, str) and top_desc:
+        agent_description = top_desc
+    top_model = data.get("model")
+    if isinstance(top_model, str) and top_model:
+        llm_model = top_model
+    agent = data.get("agent", {})
+    if isinstance(agent, dict):
+        an = agent.get("name")
+        if isinstance(an, str) and an:
+            agent_name = an
+        am = agent.get("model")
+        if isinstance(am, str) and am:
+            llm_model = am
+    return agent_name, agent_description, llm_model
 
 
 def _extract_timestamp_from_row(row: dict) -> datetime | None:

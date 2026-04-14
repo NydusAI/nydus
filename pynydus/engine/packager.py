@@ -1,4 +1,4 @@
-"""Egg packaging and reading: archive operations for .egg files. Spec §4.
+"""Egg packaging and reading: archive operations for .egg files.
 
 An .egg file is a zip archive with the canonical directory layout::
 
@@ -6,13 +6,16 @@ An .egg file is a zip archive with the canonical directory layout::
     signature.json           (optional: Ed25519 signature over modules)
     spawn_log.json           (structured spawn pipeline log)
     nydus.json               (per-skill ID/agent_type mapping)
-    apm.yml                  (APM compatibility manifest)
+    mcp.json                 (MCP server configs — Claude Desktop format)
+    agent-card.json          (A2A agent card — optional)
+    apm.yml                  (passthrough from source — optional)
+    AGENTS.md                (per-egg deployment runbook — optional)
     skills/<slug>/SKILL.md   (Agent Skills format: agentskills.io)
-    mcp/<server>.json        (MCP server configs: modelcontextprotocol.io)
+    specs/...                (embedded spec snapshots — optional)
     memory.json
     secrets.json
     raw/...
-    Nydusfile                (optional: copy of spawn DSL)
+    Nydusfile                (spawn DSL)
 """
 
 from __future__ import annotations
@@ -27,17 +30,15 @@ from pynydus.api.errors import EggError
 from pynydus.api.schemas import (
     Egg,
     Manifest,
-    McpServerConfig,
+    McpModule,
     MemoryModule,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.api.skill_format import (
-    agent_skill_to_skill_record,
+    AgentSkill,
     parse_skill_md,
     render_skill_md,
-    skill_record_to_agent_skill,
     skill_slug,
 )
 
@@ -55,11 +56,17 @@ SECRETS_ENTRY = "secrets.json"
 SIGNATURE_ENTRY = "signature.json"
 NYDUS_META_ENTRY = "nydus.json"
 SPAWN_LOG_ENTRY = "spawn_log.json"
+MCP_ENTRY = "mcp.json"
+AGENT_CARD_ENTRY = "agent-card.json"
 APM_ENTRY = "apm.yml"
+AGENTS_MD_ENTRY = "AGENTS.md"
 EMBEDDED_NYDUSFILE_NAME = "Nydusfile"
 SKILLS_PREFIX = "skills/"
-MCP_PREFIX = "mcp/"
+SPECS_PREFIX = "specs/"
 RAW_PREFIX = "raw/"
+
+# Legacy layout (read-only backward compat)
+_LEGACY_MCP_PREFIX = "mcp/"
 
 
 def _sign_if_key(
@@ -83,8 +90,7 @@ def _sign_if_key(
 def _write_skills_to_zip(zf: zipfile.ZipFile, skills: SkillsModule) -> bytes:
     """Write each skill as ``skills/<slug>/SKILL.md``.
 
-    Also writes ``nydus.json`` (per-skill ID/agent_type mapping) and
-    MCP server configs to ``mcp/<server>.json``.
+    Also writes ``nydus.json`` (per-skill tracking metadata sidecar).
 
     Returns the concatenated bytes of all SKILL.md files (sorted by slug)
     for deterministic signing.
@@ -94,8 +100,7 @@ def _write_skills_to_zip(zf: zipfile.ZipFile, skills: SkillsModule) -> bytes:
     nydus_meta: dict[str, dict[str, str]] = {}
 
     for skill in skills.skills:
-        agent_skill = skill_record_to_agent_skill(skill)
-        md_text = render_skill_md(agent_skill)
+        md_text = render_skill_md(skill)
         slug = skill_slug(skill.name)
 
         base_slug = slug
@@ -108,19 +113,25 @@ def _write_skills_to_zip(zf: zipfile.ZipFile, skills: SkillsModule) -> bytes:
         md_bytes = md_text.encode("utf-8")
         zf.writestr(f"{SKILLS_PREFIX}{slug}/SKILL.md", md_bytes)
 
-        nydus_meta[slug] = {"id": skill.id, "agent_type": skill.agent_type}
+        nydus_meta[slug] = {
+            "id": skill.metadata.get("id", slug),
+            "agent_type": skill.metadata.get("source_framework", "unknown"),
+        }
         parts.append((slug, md_bytes))
 
     if nydus_meta:
         zf.writestr(NYDUS_META_ENTRY, json.dumps(nydus_meta, indent=2))
 
-    for name in sorted(skills.mcp_configs):
-        cfg = skills.mcp_configs[name]
-        cfg_bytes = json.dumps(cfg.model_dump(exclude_defaults=True), indent=2).encode()
-        zf.writestr(f"{MCP_PREFIX}{name}.json", cfg_bytes)
-
     parts.sort(key=lambda t: t[0])
     return b"".join(b for _, b in parts)
+
+
+def _write_mcp_to_zip(zf: zipfile.ZipFile, mcp: McpModule) -> None:
+    """Write MCP configs as a single ``mcp.json`` in Claude Desktop format."""
+    if not mcp.configs:
+        return
+    doc = {"mcpServers": mcp.configs}
+    zf.writestr(MCP_ENTRY, json.dumps(doc, indent=2))
 
 
 def _read_skills_from_zip(zf: zipfile.ZipFile) -> SkillsModule:
@@ -138,78 +149,60 @@ def _read_skills_from_zip(zf: zipfile.ZipFile) -> SkillsModule:
     if NYDUS_META_ENTRY in names:
         try:
             nydus_meta = json.loads(zf.read(NYDUS_META_ENTRY))
-        except (json.JSONDecodeError, Exception):
+        except json.JSONDecodeError:
             logger.warning("Failed to parse %s", NYDUS_META_ENTRY)
 
-    mcp_configs: dict[str, McpServerConfig] = {}
-    for name in names:
-        if name.startswith(MCP_PREFIX) and name.endswith(".json"):
-            server_name = Path(name).stem
-            if server_name in mcp_configs:
-                continue
-            try:
-                cfg_data = json.loads(zf.read(name))
-                mcp_configs[server_name] = McpServerConfig(**cfg_data)
-            except (json.JSONDecodeError, Exception):
-                logger.warning("Failed to parse MCP config: %s", name)
-
     if skill_mds:
-        skills: list[SkillRecord] = []
-        for i, slug in enumerate(sorted(skill_mds), start=1):
+        skills: list[AgentSkill] = []
+        for slug in sorted(skill_mds):
             agent_skill = parse_skill_md(skill_mds[slug])
             meta = nydus_meta.get(slug, {})
-            skill_id = meta.get("id", f"skill_{i:03d}")
+            skill_id = meta.get("id", slug)
             agent_type = meta.get(
                 "agent_type", agent_skill.metadata.get("source_framework", "unknown")
             )
-            record_dict = agent_skill_to_skill_record(
-                agent_skill,
-                skill_id=skill_id,
-                agent_type=agent_type,
-            )
-            skills.append(SkillRecord(**record_dict))
-        return SkillsModule(skills=skills, mcp_configs=mcp_configs)
+            agent_skill.metadata.setdefault("id", skill_id)
+            agent_skill.metadata.setdefault("source_framework", agent_type)
+            skills.append(agent_skill)
+        return SkillsModule(skills=skills)
 
-    return SkillsModule(mcp_configs=mcp_configs)
+    return SkillsModule()
+
+
+def _read_mcp_from_zip(zf: zipfile.ZipFile) -> McpModule:
+    """Read MCP configs from ``mcp.json`` (Claude Desktop format).
+
+    Falls back to legacy ``mcp/<name>.json`` per-server files for old eggs.
+    """
+    names = zf.namelist()
+
+    if MCP_ENTRY in names:
+        try:
+            data = json.loads(zf.read(MCP_ENTRY))
+            servers = data.get("mcpServers", data)
+            if isinstance(servers, dict):
+                return McpModule(configs=servers)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse %s", MCP_ENTRY)
+
+    # Legacy: mcp/<name>.json per-server files
+    configs: dict[str, dict[str, Any]] = {}
+    for name in names:
+        if name.startswith(_LEGACY_MCP_PREFIX) and name.endswith(".json"):
+            server_name = Path(name).stem
+            if server_name in configs:
+                continue
+            try:
+                configs[server_name] = json.loads(zf.read(name))
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse MCP config: %s", name)
+
+    return McpModule(configs=configs)
 
 
 # ---------------------------------------------------------------------------
 # Save / load
 # ---------------------------------------------------------------------------
-
-
-def _build_apm_yml(egg: Egg) -> str:
-    """Generate an ``apm.yml`` manifest for APM compatibility."""
-    import yaml as _yaml
-
-    skills_list = []
-    for s in egg.skills.skills:
-        entry: dict[str, Any] = {"name": skill_slug(s.name)}
-        if s.metadata.get("description"):
-            entry["description"] = s.metadata["description"]
-        skills_list.append(entry)
-
-    mcp_list = []
-    for name in sorted(egg.skills.mcp_configs):
-        cfg = egg.skills.mcp_configs[name]
-        entry = {"name": name}
-        if cfg.command:
-            entry["command"] = cfg.command
-        if cfg.url:
-            entry["url"] = cfg.url
-        mcp_list.append(entry)
-
-    doc: dict[str, Any] = {
-        "name": egg.manifest.source_metadata.get("namespace", "nydus/agent"),
-        "version": egg.manifest.egg_version,
-        "agent_type": egg.manifest.agent_type.value,
-    }
-    if skills_list:
-        doc["skills"] = skills_list
-    if mcp_list:
-        doc["mcp_servers"] = mcp_list
-
-    return _yaml.dump(doc, default_flow_style=False, sort_keys=False)
 
 
 def _write_egg_archive(
@@ -233,6 +226,7 @@ def _write_egg_archive(
 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
         skills_bytes = _write_skills_to_zip(zf, egg.skills)
+        _write_mcp_to_zip(zf, egg.mcp)
 
         zf.writestr(MEMORY_ENTRY, memory_bytes)
         zf.writestr(SECRETS_ENTRY, secrets_bytes)
@@ -248,7 +242,23 @@ def _write_egg_archive(
             SPAWN_LOG_ENTRY,
             json.dumps(spawn_log or [], indent=2),
         )
-        zf.writestr(APM_ENTRY, _build_apm_yml(egg))
+
+        # Passthrough APM
+        if egg.apm_yml:
+            zf.writestr(APM_ENTRY, egg.apm_yml)
+
+        # A2A agent card
+        if egg.a2a_card:
+            zf.writestr(AGENT_CARD_ENTRY, json.dumps(egg.a2a_card, indent=2))
+
+        # Per-egg deployment runbook
+        if egg.agents_md:
+            zf.writestr(AGENTS_MD_ENTRY, egg.agents_md)
+
+        # Spec snapshots
+        if egg.spec_snapshots:
+            for spec_name, spec_content in egg.spec_snapshots.items():
+                zf.writestr(f"{SPECS_PREFIX}{spec_name}", spec_content)
 
         sig_data = _sign_if_key(
             private_key,
@@ -256,11 +266,10 @@ def _write_egg_archive(
         )
         if sig_data:
             egg.manifest.signature = sig_data["signature"]
-            zf.writestr(MANIFEST_ENTRY, egg.manifest.model_dump_json(indent=2))
             zf.writestr(SIGNATURE_ENTRY, json.dumps(sig_data, indent=2))
         else:
             egg.manifest.signature = old_sig
-            zf.writestr(MANIFEST_ENTRY, egg.manifest.model_dump_json(indent=2))
+        zf.writestr(MANIFEST_ENTRY, egg.manifest.model_dump_json(indent=2))
 
     return output_path
 
@@ -304,24 +313,60 @@ def save(
 
 
 def _unpack_egg_core(egg_path: Path) -> Egg:
-    """Load manifest, skills, memory, and secrets from an archive (no ``raw/`` or logs)."""
+    """Load manifest, skills, MCP, memory, and secrets from an archive."""
     if not egg_path.exists():
         raise EggError(f"Egg file not found: {egg_path}")
 
     try:
         with zipfile.ZipFile(egg_path, "r") as zf:
+            names = zf.namelist()
             manifest_data = json.loads(zf.read(MANIFEST_ENTRY))
             skills_module = _read_skills_from_zip(zf)
+            mcp_module = _read_mcp_from_zip(zf)
             memory_data = json.loads(zf.read(MEMORY_ENTRY))
             secrets_data = json.loads(zf.read(SECRETS_ENTRY))
+
+            # Read optional standard artifacts
+            a2a_card = None
+            if AGENT_CARD_ENTRY in names:
+                try:
+                    a2a_card = json.loads(zf.read(AGENT_CARD_ENTRY))
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse %s", AGENT_CARD_ENTRY)
+
+            agents_md = None
+            if AGENTS_MD_ENTRY in names:
+                agents_md = zf.read(AGENTS_MD_ENTRY).decode("utf-8")
+
+            apm_yml = None
+            if APM_ENTRY in names:
+                apm_yml = zf.read(APM_ENTRY).decode("utf-8")
+
+            spec_snapshots: dict[str, str] | None = None
+            spec_entries = [n for n in names if n.startswith(SPECS_PREFIX) and not n.endswith("/")]
+            if spec_entries:
+                spec_snapshots = {}
+                for entry in spec_entries:
+                    key = entry[len(SPECS_PREFIX):]
+                    spec_snapshots[key] = zf.read(entry).decode("utf-8")
+
     except (KeyError, zipfile.BadZipFile) as e:
         raise EggError(f"Invalid Egg archive: {e}") from e
+
+    # Strip fields that don't exist in the current Manifest model
+    manifest_data.pop("included_modules", None)
+    manifest_data.pop("source_metadata", None)
 
     return Egg(
         manifest=Manifest(**manifest_data),
         skills=skills_module,
+        mcp=mcp_module,
         memory=MemoryModule(**memory_data),
         secrets=SecretsModule(**secrets_data),
+        a2a_card=a2a_card,
+        agents_md=agents_md,
+        apm_yml=apm_yml,
+        spec_snapshots=spec_snapshots,
     )
 
 
@@ -378,7 +423,7 @@ def read_raw_artifacts(egg_path: Path) -> dict[str, str]:
     with zipfile.ZipFile(egg_path, "r") as zf:
         for name in zf.namelist():
             if name.startswith(RAW_PREFIX) and not name.endswith("/"):
-                key = name[len(RAW_PREFIX) :]
+                key = name[len(RAW_PREFIX):]
                 artifacts[key] = zf.read(name).decode("utf-8")
     return artifacts
 
@@ -463,10 +508,14 @@ def verify_egg_archive(egg_path: Path) -> bool | None:
 
     with zipfile.ZipFile(egg_path, "r") as zf:
         try:
-            manifest = Manifest(**json.loads(zf.read(MANIFEST_ENTRY)))
+            manifest_data = json.loads(zf.read(MANIFEST_ENTRY))
+            manifest_data.pop("included_modules", None)
+            manifest_data.pop("source_metadata", None)
+            manifest = Manifest(**manifest_data)
             manifest.signature = ""
             manifest_bytes = manifest.model_dump_json(indent=2).encode()
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            logger.warning("Cannot verify egg signature: %s", exc)
             return False
 
         content_parts = [

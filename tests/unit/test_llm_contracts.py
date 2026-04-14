@@ -10,7 +10,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from pynydus.api.schemas import MemoryModule, MemoryRecord, SkillRecord, SkillsModule
+from pynydus.api.schemas import AgentSkill, MemoryModule, MemoryRecord, SkillsModule
 from pynydus.common.enums import AgentType, MemoryLabel
 from pynydus.engine.refinement import (
     AdaptedFile,
@@ -102,8 +102,11 @@ class TestSkillsRefinement:
     def test_unknown_id_skipped(self, mock_comp, tier):
         skills = SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001", name="Search", agent_type="openclaw", content="Search the web."
+                AgentSkill(
+                    name="Search",
+                    description="",
+                    body="Search the web.",
+                    metadata={"id": "skill_001", "source_framework": "openclaw"},
                 ),
             ]
         )
@@ -132,7 +135,7 @@ class TestHatchRefinement:
         )
         egg = make_egg()
         original = {"SOUL.md": "Original soul.", "MEMORY.md": "A fact.", "AGENTS.md": "Rules."}
-        result = refine_hatch(original, egg, tier)
+        result = refine_hatch(original, egg, tier, target="openclaw")
         assert result["SOUL.md"] == "Refined soul."
         assert result["MEMORY.md"] == "A fact."
         assert result["AGENTS.md"] == "Rules."
@@ -186,7 +189,14 @@ class TestGracefulDegradation:
     @patch("pynydus.engine.refinement.create_completion", return_value=None)
     def test_skills_fallback(self, _mock, tier):
         skills = SkillsModule(
-            skills=[SkillRecord(id="s1", name="test", agent_type="openclaw", content="content")]
+            skills=[
+                AgentSkill(
+                    name="test",
+                    description="",
+                    body="content",
+                    metadata={"id": "s1", "source_framework": "openclaw"},
+                )
+            ]
         )
         result = refine_skills(skills, tier)
         assert result.skills[0].name == "test"
@@ -200,7 +210,7 @@ class TestGracefulDegradation:
             ]
         )
         egg = make_egg()
-        result = refine_hatch({"SOUL.md": "Original"}, egg, tier)
+        result = refine_hatch({"SOUL.md": "Original"}, egg, tier, target="openclaw")
         assert result["SOUL.md"] == "Adapted"
         assert "malicious.md" not in result
 
@@ -210,7 +220,7 @@ class TestPromptConstruction:
     def test_cross_platform_adapt(self, mock_comp, tier):
         mock_comp.return_value = AdaptedFilesOutput(files=[])
         egg = make_egg(agent_type=AgentType.OPENCLAW)
-        refine_hatch({"agent_state.json": '{"memory": {}}'}, egg, tier)
+        refine_hatch({"agent_state.json": '{"memory": {}}'}, egg, tier, target="letta")
         call_args = mock_comp.call_args
         messages = call_args[1].get("messages") or call_args[0][2]
         assert "adapt" in messages[0]["content"].lower()
@@ -219,7 +229,7 @@ class TestPromptConstruction:
     def test_same_platform_polish(self, mock_comp, tier):
         mock_comp.return_value = AdaptedFilesOutput(files=[])
         egg = make_egg(agent_type=AgentType.OPENCLAW)
-        refine_hatch({"SOUL.md": "Content"}, egg, tier)
+        refine_hatch({"SOUL.md": "Content"}, egg, tier, target="openclaw")
         call_args = mock_comp.call_args
         messages = call_args[1].get("messages") or call_args[0][2]
         assert "polish" in messages[0]["content"].lower()

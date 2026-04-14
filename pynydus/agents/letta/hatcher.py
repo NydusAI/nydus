@@ -19,15 +19,16 @@ import json
 from pathlib import Path
 
 from pynydus.api.errors import HatchError
+from pynydus.api.protocols import Hatcher
 from pynydus.api.raw_types import RenderResult
-from pynydus.api.schemas import Egg, HatchResult, ValidationIssue, ValidationReport
+from pynydus.api.schemas import Egg, HatchResult
 from pynydus.common.enums import MemoryLabel, SecretKind
 
 
-class LettaHatcher:
+class LettaHatcher(Hatcher):
     """Produce a valid Letta AgentFile (.af) from an Egg."""
 
-    def render(self, egg: Egg) -> RenderResult:
+    def render(self, egg: Egg, output_dir: Path) -> RenderResult:
         """Render Egg records into an AgentFileSchema-shaped .af file.
 
         Placeholders (``{{SECRET_NNN}}``, ``{{PII_NNN}}``) are preserved.
@@ -35,10 +36,12 @@ class LettaHatcher:
 
         Args:
             egg: The Egg to render.
+            output_dir: Target directory (unused; pipeline performs disk I/O).
 
         Returns:
             File dict and any warnings produced during rendering.
         """
+        _ = output_dir
         files: dict[str, str] = {}
         warnings: list[str] = []
 
@@ -104,7 +107,7 @@ class LettaHatcher:
                     "id": tid,
                     "name": _skill_to_module_name(skill.name),
                     "description": f"Custom tool: {skill.name}",
-                    "source_code": skill.content,
+                    "source_code": skill.body,
                     "source_type": "python",
                     "tool_type": "custom",
                     "tags": [],
@@ -124,29 +127,24 @@ class LettaHatcher:
         for cred in credentials:
             env_vars[cred.name] = cred.placeholder
 
-        # --- round-trip LLM config from source metadata ---
+        # --- round-trip LLM / embedding from manifest neutral fields ---
         llm_config: dict | None = None
         embedding_config: dict | None = None
-        source_meta = egg.manifest.source_metadata or {}
-        if any(k.startswith("letta.llm.") for k in source_meta):
+        if egg.manifest.llm_model or egg.manifest.llm_context_window is not None:
             llm_config = {}
-            for k, v in source_meta.items():
-                if k.startswith("letta.llm."):
-                    field = k.removeprefix("letta.llm.")
-                    llm_config[field] = v
-        if any(k.startswith("letta.embedding.") for k in source_meta):
-            embedding_config = {}
-            for k, v in source_meta.items():
-                if k.startswith("letta.embedding."):
-                    field = k.removeprefix("letta.embedding.")
-                    embedding_config[field] = v
+            if egg.manifest.llm_model:
+                llm_config["model"] = egg.manifest.llm_model
+            if egg.manifest.llm_context_window is not None:
+                llm_config["context_window"] = egg.manifest.llm_context_window
+        if egg.manifest.embedding_model:
+            embedding_config = {"embedding_model": egg.manifest.embedding_model}
 
         # --- build agent dict ---
         agent: dict = {
             "id": "agent-0",
-            "name": source_meta.get("letta.name", "nydus_agent"),
+            "name": egg.manifest.agent_name or "nydus_agent",
             "system": system_prompt,
-            "agent_type": source_meta.get("letta.agent_type", "letta_v1_agent"),
+            "agent_type": "letta_v1_agent",
             "block_ids": block_ids,
             "tool_ids": tool_ids,
             "tool_rules": [],
@@ -167,12 +165,14 @@ class LettaHatcher:
             agent["llm_config"] = llm_config
         if embedding_config:
             agent["embedding_config"] = embedding_config
+        if egg.manifest.agent_description:
+            agent["description"] = egg.manifest.agent_description
 
-        # --- mcp_servers ---
+        # --- mcp_servers (Letta AgentFile; configs are raw dicts on egg.mcp) ---
         mcp_servers: list[dict] = []
-        if egg.skills.mcp_configs:
-            for name, cfg in sorted(egg.skills.mcp_configs.items()):
-                srv = cfg.model_dump(exclude_defaults=True)
+        if egg.mcp.configs:
+            for name, cfg in sorted(egg.mcp.configs.items()):
+                srv = dict(cfg)
                 srv.setdefault("server_name", name)
                 mcp_servers.append(srv)
 
@@ -222,7 +222,7 @@ class LettaHatcher:
         Returns:
             Result with list of created files and any warnings.
         """
-        result = self.render(egg)
+        result = self.render(egg, output_dir)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         files_created: list[str] = []
@@ -237,71 +237,6 @@ class LettaHatcher:
             output_dir=output_dir,
             files_created=files_created,
             warnings=list(result.warnings),
-        )
-
-    def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated Letta output.
-
-        Args:
-            result: The hatch result to validate.
-
-        Returns:
-            Report with ``valid`` flag and any issues found.
-        """
-        issues: list[ValidationIssue] = []
-
-        if "agent_state.json" not in result.files_created:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message="agent_state.json was not generated",
-                    location=str(result.output_dir),
-                )
-            )
-
-        for fname in result.files_created:
-            fpath = result.output_dir / fname
-            if not fpath.exists():
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message=f"Expected file not found: {fname}",
-                        location=str(fpath),
-                    )
-                )
-
-        state_path = result.output_dir / "agent_state.json"
-        if state_path.exists():
-            try:
-                data = json.loads(state_path.read_text())
-                if not isinstance(data, dict):
-                    issues.append(
-                        ValidationIssue(
-                            level="error",
-                            message="agent_state.json is not a JSON object",
-                            location=str(state_path),
-                        )
-                    )
-                elif "memory" not in data and "system" not in data:
-                    issues.append(
-                        ValidationIssue(
-                            level="warning",
-                            message="agent_state.json has no memory blocks or system prompt",
-                            location=str(state_path),
-                        )
-                    )
-            except json.JSONDecodeError:
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message="agent_state.json is not valid JSON",
-                        location=str(state_path),
-                    )
-                )
-
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues),
-            issues=issues,
         )
 
 

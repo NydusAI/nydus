@@ -10,7 +10,7 @@ Usage::
     path = ny.save(egg, Path("agent.egg"))
 
     egg = ny.load(Path("agent.egg"))
-    egg.skills.skills  # list of SkillRecord
+    egg.skills.skills  # list of AgentSkill
     egg.memory.memory  # list of MemoryRecord
     egg.inspect_secrets()
 

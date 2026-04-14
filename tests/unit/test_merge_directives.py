@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     Manifest,
     MemoryModule,
     MemoryRecord,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import (
@@ -127,18 +127,17 @@ class TestFromBaseEgg:
 def _make_base_egg() -> Egg:
     return Egg(
         manifest=Manifest(
-            nydus_version="0.1.0",
+            nydus_version="0.0.7",
             created_at=datetime.now(tz=timezone.utc),
             agent_type=AgentType.OPENCLAW,
-            included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
         ),
         skills=SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="greet",
-                    agent_type="markdown_skill",
-                    content="Say hello to the user",
+                    description="",
+                    body="Say hello to the user",
+                    metadata={"id": "skill_001", "source_framework": "markdown_skill"},
                 ),
             ]
         ),
@@ -203,7 +202,7 @@ class TestMergerAdd:
         partial = merge(egg, ops)
         assert len(partial.skills.skills) == 2
         assert partial.skills.skills[-1].name == "farewell"
-        assert partial.skills.skills[-1].content == "Say goodbye"
+        assert partial.skills.skills[-1].body == "Say goodbye"
 
     def test_add_secret(self) -> None:
         egg = _make_base_egg()
@@ -269,7 +268,7 @@ class TestMergerSet:
             )
         ]
         partial = merge(egg, ops)
-        assert partial.skills.skills[0].content == "Updated greeting"
+        assert partial.skills.skills[0].body == "Updated greeting"
 
     def test_set_nonexistent_warns(self, caplog: pytest.LogCaptureFixture) -> None:
         egg = _make_base_egg()
@@ -378,7 +377,7 @@ class TestFromPlusSource:
         assert base_mem_texts.issubset(result_mem_texts)
         assert len(egg.memory.memory) > len(base_egg.memory.memory)
 
-        ids = [s.id for s in egg.skills.skills]
+        ids = [s.metadata.get("id", "") for s in egg.skills.skills]
         assert ids == sorted(ids)
         assert len(ids) == len(set(ids))
 

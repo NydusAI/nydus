@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from pynydus.api.schemas import (
+    AgentSkill,
     MemoryModule,
     MemoryRecord,
+    McpModule,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import AgentType, MemoryLabel
@@ -134,15 +135,22 @@ class TestPhase8Package:
             agent_type=AgentType.OPENCLAW,
         )
         skills = SkillsModule(
-            skills=[SkillRecord(id="s1", name="greet", agent_type="x", content="hi")]
+            skills=[
+                AgentSkill(
+                    name="greet",
+                    description="",
+                    body="hi",
+                    metadata={"id": "s1", "source_framework": "x"},
+                )
+            ]
         )
         memory = MemoryModule()
         secrets = SecretsModule()
 
-        egg = _package_egg(ctx, skills, memory, secrets, {"k": "v"})
+        egg = _package_egg(ctx, skills, McpModule(), memory, secrets)
         assert egg.manifest.agent_type == AgentType.OPENCLAW
         assert len(egg.skills.skills) == 1
-        assert egg.manifest.source_metadata == {"k": "v"}
+        assert egg.manifest.source_dir == "/tmp/test"
 
     def test_sources_in_manifest(self):
         ctx = PipelineContext(
@@ -155,9 +163,9 @@ class TestPhase8Package:
         egg = _package_egg(
             ctx,
             SkillsModule(),
+            McpModule(),
             MemoryModule(),
             SecretsModule(),
-            {},
         )
         assert len(egg.manifest.sources) == 1
         assert egg.manifest.sources[0].agent_type == "openclaw"

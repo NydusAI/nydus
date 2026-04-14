@@ -8,6 +8,7 @@ before packaging and restored on the other side.
 
 - **Spawn** an Egg from an existing agent project (OpenClaw, ZeroClaw, or Letta)
 - **Hatch** the Egg into any supported target runtime
+- **Extract** standard artifacts (MCP, Agent Skills, A2A, APM, AGENTS.md)
 - **Sign** Eggs with Ed25519 for integrity and share them via the **Nest** registry
 
 

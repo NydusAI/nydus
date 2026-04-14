@@ -23,7 +23,8 @@ path = ny.save(egg, Path("agent.egg"), sign=True)
 
 # Load and inspect (includes raw/ and spawn log)
 egg = ny.load(Path("agent.egg"))
-egg.skills.skills       # list of SkillRecord
+egg.skills.skills       # list of AgentSkill
+egg.mcp.configs         # dict of MCP server configs
 egg.memory.memory       # list of MemoryRecord
 egg.inspect_secrets()
 report = ny.validate(egg)

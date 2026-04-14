@@ -1,7 +1,8 @@
 """Nydus CLI: Typer application.
 
-Entry point for ``nydus`` commands: spawn, hatch, inspect, diff,
-registry operations, and key management.
+Entry point for ``nydus`` commands: spawn, hatch, inspect, extract, diff,
+registry operations, and key management. Validation is embedded in
+``inspect`` and ``hatch`` — there is no standalone ``validate`` command.
 """
 
 from __future__ import annotations
@@ -64,7 +65,7 @@ def spawn(
         from pynydus.security.signing import load_private_key
 
         private_key = load_private_key()
-    except Exception:
+    except (FileNotFoundError, ValueError, TypeError):
         pass
 
     nydusfile_text = nydusfile_path.read_text()
@@ -133,6 +134,12 @@ def hatch(
             "--passthrough", help="Replay redacted raw/ snapshot instead of rebuilding from modules"
         ),
     ] = False,
+    skip_validation: Annotated[
+        bool,
+        typer.Option(
+            "--skip-validation", help="Skip egg validation before hatching"
+        ),
+    ] = False,
 ) -> None:
     """Deploy an Egg into a target runtime.
 
@@ -142,11 +149,13 @@ def hatch(
         output: Output directory for hatched files.
         secrets: Optional ``.env`` path for placeholder substitution at hatch.
         passthrough: When set, replay ``raw/`` instead of rebuilding from modules.
+        skip_validation: When set, skip structural and per-standard validation.
     """
     from pynydus.common.enums import AgentType, HatchMode
     from pynydus.config import load_config
     from pynydus.engine.hatcher import hatch as engine_hatch
     from pynydus.engine.packager import load, verify_egg_archive
+    from pynydus.engine.validator import validate_egg
 
     nydus_cfg = load_config()
 
@@ -163,6 +172,23 @@ def hatch(
 
     try:
         egg = load(egg_path)
+    except Exception as e:
+        rprint(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    # Validation gate: reject eggs with errors before hatching
+    if not skip_validation:
+        report = validate_egg(egg)
+        if not report.valid:
+            rprint("[red]Egg validation failed — aborting hatch.[/red]")
+            for issue in report.issues:
+                color = "red" if issue.level == "error" else "yellow"
+                loc = f" ({issue.location})" if issue.location else ""
+                rprint(f"  [{color}]{issue.level}:[/{color}] {issue.message}{loc}")
+            rprint("[dim]Use --skip-validation to hatch anyway.[/dim]")
+            raise typer.Exit(1)
+
+    try:
         result = engine_hatch(
             egg,
             target=AgentType(target),
@@ -242,15 +268,20 @@ def inspect(
         bool, typer.Option("--secrets", help="List all placeholders and occurrences")
     ] = False,
     show_logs: Annotated[bool, typer.Option("--logs", help="Show pipeline log summary")] = False,
+    no_validate: Annotated[
+        bool, typer.Option("--no-validate", help="Skip per-standard validation")
+    ] = False,
 ) -> None:
-    """Print Egg summary.
+    """Print Egg summary with inline validation.
 
     Args:
         egg_path: Path to the ``.egg`` file.
         show_secrets: List placeholders and occurrence counts.
         show_logs: Print a grouped summary of ``spawn_log`` entries.
+        no_validate: When set, skip per-standard schema validation.
     """
     from pynydus.engine.packager import load, verify_egg_archive
+    from pynydus.engine.validator import validate_egg
 
     try:
         egg = load(egg_path)
@@ -264,6 +295,8 @@ def inspect(
         f"  nydus {m.nydus_version} | egg spec {m.egg_version} | requires >= {m.min_nydus_version}"
     )
     rprint(f"  agent type: {m.agent_type}")
+    if m.agent_name:
+        rprint(f"  agent name: {m.agent_name}")
     if m.base_egg:
         rprint(f"  base egg: {m.base_egg}")
     rprint(f"  created: {m.created_at}")
@@ -280,6 +313,42 @@ def inspect(
         f"memory={len(egg.memory.memory)}  "
         f"secrets={len(egg.secrets.secrets)}"
     )
+
+    # Standards summary
+    standards: list[str] = []
+    if egg.mcp.configs:
+        standards.append(f"mcp={len(egg.mcp.configs)} server(s)")
+    if egg.a2a_card is not None:
+        standards.append("a2a=present")
+    if egg.agents_md is not None:
+        standards.append("agents.md=present")
+    if egg.apm_yml is not None:
+        standards.append("apm=present")
+    if egg.spec_snapshots:
+        standards.append(f"specs={len(egg.spec_snapshots)}")
+    if standards:
+        rprint(f"  {' | '.join(standards)}")
+
+    # Inline validation
+    if not no_validate:
+        report = validate_egg(egg)
+        errors = [i for i in report.issues if i.level == "error"]
+        warnings = [i for i in report.issues if i.level == "warning"]
+
+        if report.valid and not warnings:
+            rprint("  validation: [green]passed[/green]")
+        elif report.valid:
+            rprint(f"  validation: [green]passed[/green] ({len(warnings)} warning(s))")
+        else:
+            rprint(
+                f"  validation: [red]FAILED[/red] "
+                f"({len(errors)} error(s), {len(warnings)} warning(s))"
+            )
+
+        for issue in report.issues:
+            color = "red" if issue.level == "error" else "yellow"
+            loc = f" ({issue.location})" if issue.location else ""
+            rprint(f"    [{color}]{issue.level}:[/{color}] {issue.message}{loc}")
 
     if show_secrets and egg.secrets.secrets:
         rprint()
@@ -362,38 +431,164 @@ def _log_type_detail(entry_type: str, entries: list[dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# validate
+# extract
 # ---------------------------------------------------------------------------
 
+extract_app = typer.Typer(
+    name="extract",
+    help="Extract standard artifacts from an Egg.",
+    no_args_is_help=True,
+)
+app.add_typer(extract_app, name="extract")
 
-@app.command()
-def validate(
-    egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
-) -> None:
-    """Check Egg integrity.
 
-    Args:
-        egg_path: Path to the ``.egg`` file.
-    """
-    from pynydus.engine.packager import _unpack_egg_core
-    from pynydus.engine.validator import validate_egg
+def _load_egg_for_extract(egg_path: Path) -> "Egg":  # noqa: F821
+    """Load an egg, handling errors consistently for all extract subcommands."""
+    from pynydus.engine.packager import load
 
+    if not egg_path.exists():
+        rprint(f"[red]Error:[/red] File not found: {egg_path}")
+        raise typer.Exit(1)
     try:
-        egg = _unpack_egg_core(egg_path)
+        return load(egg_path)
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
-    report = validate_egg(egg)
-    if report.valid:
-        rprint("[green]Egg is valid.[/green]")
+
+def _write_extracted(files: dict[str, str], output_dir: Path, label: str) -> None:
+    """Write extracted files to disk and print summary."""
+    if not files:
+        rprint(f"[dim]No {label} found in this egg.[/dim]")
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        fpath = output_dir / name
+        fpath.parent.mkdir(parents=True, exist_ok=True)
+        fpath.write_text(content, encoding="utf-8")
+        rprint(f"  [green]wrote[/green] {fpath}")
+
+    rprint(f"[green]Extracted {len(files)} {label} file(s).[/green]")
+
+
+@extract_app.command("mcp")
+def extract_mcp(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
+) -> None:
+    """Extract MCP server configs (mcp.json)."""
+    from pynydus.standards import mcp
+
+    egg = _load_egg_for_extract(egg_path)
+    _write_extracted(mcp.extract(egg), output, "MCP config")
+
+
+@extract_app.command("skills")
+def extract_skills(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
+) -> None:
+    """Extract Agent Skills (SKILL.md files)."""
+    from pynydus.standards import skills
+
+    egg = _load_egg_for_extract(egg_path)
+    _write_extracted(skills.extract(egg), output, "skills")
+
+
+@extract_app.command("a2a")
+def extract_a2a(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
+) -> None:
+    """Extract A2A agent card (agent-card.json)."""
+    from pynydus.standards import a2a
+
+    egg = _load_egg_for_extract(egg_path)
+    _write_extracted(a2a.extract(egg), output, "A2A agent card")
+
+
+@extract_app.command("apm")
+def extract_apm(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
+) -> None:
+    """Extract APM manifest (apm.yml) — passthrough only."""
+    from pynydus.standards import apm
+
+    egg = _load_egg_for_extract(egg_path)
+    _write_extracted(apm.extract(egg), output, "apm.yml")
+
+
+@extract_app.command("agents")
+def extract_agents(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
+) -> None:
+    """Extract per-egg AGENTS.md deployment runbook."""
+    from pynydus.standards import agents_md
+
+    egg = _load_egg_for_extract(egg_path)
+    _write_extracted(agents_md.extract(egg), output, "AGENTS.md")
+
+
+@extract_app.command("specs")
+def extract_specs(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path(
+        "./specs"
+    ),
+) -> None:
+    """Extract embedded spec snapshots."""
+    egg = _load_egg_for_extract(egg_path)
+    if not egg.spec_snapshots:
+        rprint("[dim]No spec snapshots found in this egg.[/dim]")
+        return
+    _write_extracted(egg.spec_snapshots, output, "spec snapshot")
+
+
+@extract_app.command("all")
+def extract_all(
+    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path(
+        "./extracted"
+    ),
+) -> None:
+    """Extract all standard artifacts at once."""
+    from pynydus.standards import a2a, agents_md, apm, mcp, skills
+
+    egg = _load_egg_for_extract(egg_path)
+    total = 0
+
+    for label, files in [
+        ("MCP config", mcp.extract(egg)),
+        ("skills", skills.extract(egg)),
+        ("A2A agent card", a2a.extract(egg)),
+        ("apm.yml", apm.extract(egg)),
+        ("AGENTS.md", agents_md.extract(egg)),
+    ]:
+        if files:
+            for name, content in files.items():
+                fpath = output / name
+                fpath.parent.mkdir(parents=True, exist_ok=True)
+                fpath.write_text(content, encoding="utf-8")
+                rprint(f"  [green]wrote[/green] {fpath}")
+                total += 1
+
+    if egg.spec_snapshots:
+        specs_dir = output / "specs"
+        specs_dir.mkdir(parents=True, exist_ok=True)
+        for name, content in egg.spec_snapshots.items():
+            fpath = specs_dir / name
+            fpath.parent.mkdir(parents=True, exist_ok=True)
+            fpath.write_text(content, encoding="utf-8")
+            rprint(f"  [green]wrote[/green] {fpath}")
+            total += 1
+
+    if total:
+        rprint(f"[green]Extracted {total} file(s) total.[/green]")
     else:
-        rprint("[red]Egg is invalid.[/red]")
-        for issue in report.issues:
-            color = "red" if issue.level == "error" else "yellow"
-            loc = f" ({issue.location})" if issue.location else ""
-            rprint(f"  [{color}]{issue.level}:[/{color}] {issue.message}{loc}")
-        raise typer.Exit(1)
+        rprint("[dim]No standard artifacts found in this egg.[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +698,7 @@ def keygen(
 
 
 # ---------------------------------------------------------------------------
-# push / pull (Phase 1b stubs)
+# push / pull / registry
 # ---------------------------------------------------------------------------
 
 

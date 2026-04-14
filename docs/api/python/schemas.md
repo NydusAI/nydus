@@ -25,6 +25,9 @@ from the top-level PyNydus package (`pynydus`).
 ```{autodoc2-object} pynydus.api.schemas.SkillsModule
 ```
 
+```{autodoc2-object} pynydus.api.schemas.McpModule
+```
+
 ```{autodoc2-object} pynydus.api.schemas.MemoryModule
 ```
 
@@ -33,16 +36,13 @@ from the top-level PyNydus package (`pynydus`).
 
 ## Records
 
-```{autodoc2-object} pynydus.api.schemas.SkillRecord
+```{autodoc2-object} pynydus.api.skill_format.AgentSkill
 ```
 
 ```{autodoc2-object} pynydus.api.schemas.MemoryRecord
 ```
 
 ```{autodoc2-object} pynydus.api.schemas.SecretRecord
-```
-
-```{autodoc2-object} pynydus.api.schemas.McpServerConfig
 ```
 
 ## Pipeline results
@@ -76,7 +76,7 @@ These types are defined in `pynydus.common.enums` and re-exported from
 ```{autodoc2-object} pynydus.common.enums.AgentType
 ```
 
-```{autodoc2-object} pynydus.common.enums.Bucket
+```{autodoc2-object} pynydus.common.enums.ModuleType
 ```
 
 ```{autodoc2-object} pynydus.common.enums.SecretKind
@@ -93,4 +93,3 @@ These types are defined in `pynydus.common.enums` and re-exported from
 
 ```{autodoc2-object} pynydus.common.enums.DiffChange
 ```
-

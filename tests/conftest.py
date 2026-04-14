@@ -4,18 +4,21 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     HatchResult,
     Manifest,
+    McpModule,
     MemoryModule,
     MemoryRecord,
-    SkillRecord,
+    SecretsModule,
     SkillsModule,
 )
-from pynydus.common.enums import AgentType, Bucket, MemoryLabel
+from pynydus.common.enums import AgentType, MemoryLabel
 from pynydus.llm import LLMTierConfig
 
 # ---------------------------------------------------------------------------
@@ -28,7 +31,7 @@ def _hatch_to_disk(hatcher, egg: Egg, output_dir: Path) -> HatchResult:
 
     Returns a :class:`HatchResult` with the created file list.
     """
-    result = hatcher.render(egg)
+    result = hatcher.render(egg, output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     files_created: list[str] = []
@@ -60,27 +63,31 @@ def hatch_to_disk():
 def make_egg(
     *,
     agent_type: AgentType = AgentType.OPENCLAW,
-    included_modules: list[str] | None = None,
-    skills: list[SkillRecord] | None = None,
+    skills: list[AgentSkill] | None = None,
     memory: list[MemoryRecord] | None = None,
-    nydus_version: str = "0.1.0",
+    nydus_version: str = "0.0.7",
+    mcp: McpModule | None = None,
+    secrets: SecretsModule | None = None,
+    a2a_card: dict[str, Any] | None = None,
+    agents_md: str | None = None,
+    apm_yml: str | None = None,
+    spec_snapshots: dict[str, str] | None = None,
     **manifest_kw,
 ) -> Egg:
     """Build an :class:`Egg` with sensible defaults.
 
     Pass ``skills`` / ``memory`` to override the default single-record modules.
+    Egg-level fields (``mcp``, ``secrets``, ``a2a_card``, ``agents_md``,
+    ``apm_yml``, ``spec_snapshots``) are set directly on the Egg.
     Extra *manifest_kw* are forwarded to :class:`Manifest`.
     """
-    if included_modules is None:
-        included_modules = [Bucket.SKILL, Bucket.MEMORY]
-
     if skills is None:
         skills = [
-            SkillRecord(
-                id="skill_001",
+            AgentSkill(
                 name="test",
-                agent_type="markdown_skill",
-                content="Test skill.",
+                description="Test skill.",
+                body="Test skill.",
+                metadata={"id": "skill_001", "source_framework": "markdown_skill"},
             )
         ]
 
@@ -97,16 +104,29 @@ def make_egg(
 
     manifest_kw.setdefault("created_at", datetime.now(UTC))
 
-    return Egg(
-        manifest=Manifest(
+    egg_kw: dict[str, Any] = {
+        "manifest": Manifest(
             nydus_version=nydus_version,
             agent_type=agent_type,
-            included_modules=included_modules,
             **manifest_kw,
         ),
-        skills=SkillsModule(skills=skills),
-        memory=MemoryModule(memory=memory),
-    )
+        "skills": SkillsModule(skills=skills),
+        "memory": MemoryModule(memory=memory),
+    }
+    if mcp is not None:
+        egg_kw["mcp"] = mcp
+    if secrets is not None:
+        egg_kw["secrets"] = secrets
+    if a2a_card is not None:
+        egg_kw["a2a_card"] = a2a_card
+    if agents_md is not None:
+        egg_kw["agents_md"] = agents_md
+    if apm_yml is not None:
+        egg_kw["apm_yml"] = apm_yml
+    if spec_snapshots is not None:
+        egg_kw["spec_snapshots"] = spec_snapshots
+
+    return Egg(**egg_kw)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +148,7 @@ def sample_egg() -> Egg:
 @pytest.fixture
 def minimal_egg() -> Egg:
     """An Egg with only a manifest and empty modules."""
-    return make_egg(skills=[], memory=[], included_modules=[Bucket.SKILL, Bucket.MEMORY])
+    return make_egg(skills=[], memory=[])
 
 
 @pytest.fixture

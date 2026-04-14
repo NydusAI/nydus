@@ -1,9 +1,8 @@
 """File classification for credential and PII scanning.
 
-Extensions are mapped to categories so the pipeline can skip binary assets and
-scan the rest as UTF-8 text. ``partition_files`` only distinguishes **ignored**
-from **scannable**. ``structured``, ``markdown``, and ``plain`` labels are for
-tests and future use, not separate scan paths today.
+``classify`` returns **ignored** for known binary/non-text extensions and
+**plain** for everything else. ``partition_files`` splits on that: ignored
+entries are skipped; the rest are scanned as UTF-8 text.
 """
 
 from __future__ import annotations
@@ -51,9 +50,6 @@ IGNORED_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
-_STRUCTURED_EXTENSIONS: frozenset[str] = frozenset({"json", "yaml", "yml"})
-_MARKDOWN_EXTENSIONS: frozenset[str] = frozenset({"md", "mdx"})
-
 
 def classify(name: str) -> FileCategory:
     """Classify a filename into a scanning category.
@@ -62,19 +58,11 @@ def classify(name: str) -> FileCategory:
         name: File path or basename (extension is inferred from the last ``.``).
 
     Returns:
-        ``"ignored"``, ``"structured"``, ``"markdown"``, or ``"plain"``. Only
-        ``"ignored"`` is filtered before scanning in the current pipeline. other
-        values are treated as scannable.
+        ``"ignored"`` for binary/non-text assets, ``"plain"`` for everything
+        else. Only ``"ignored"`` is filtered before scanning.
     """
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-
-    if ext in IGNORED_EXTENSIONS:
-        return "ignored"
-    if ext in _STRUCTURED_EXTENSIONS:
-        return "structured"
-    if ext in _MARKDOWN_EXTENSIONS:
-        return "markdown"
-    return "plain"
+    return "ignored" if ext in IGNORED_EXTENSIONS else "plain"
 
 
 def partition_files(

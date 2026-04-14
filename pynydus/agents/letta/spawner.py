@@ -19,6 +19,7 @@ import sqlite3
 from pathlib import Path
 
 from pynydus.api.errors import ConnectorError
+from pynydus.api.protocols import Spawner
 from pynydus.api.raw_types import (
     ParseResult,
     RawMemory,
@@ -67,7 +68,31 @@ FILE_PATTERNS = [
 """Glob patterns the pipeline uses to read source files from disk."""
 
 
-class LettaSpawner:
+def _extract_af_llm_embedding(agent: dict) -> tuple[str | None, int | None, str | None]:
+    """Read neutral LLM / embedding fields from an AgentFile ``agent`` dict."""
+    llm_model = None
+    llm_context_window = None
+    embedding_model = None
+    llm = agent.get("llm_config", {})
+    if isinstance(llm, dict):
+        m = llm.get("model")
+        if m is not None:
+            llm_model = str(m)
+        cw = llm.get("context_window")
+        if cw is not None:
+            try:
+                llm_context_window = int(cw)
+            except (TypeError, ValueError):
+                llm_context_window = None
+    emb = agent.get("embedding_config", {})
+    if isinstance(emb, dict):
+        em = emb.get("embedding_model")
+        if em is not None:
+            embedding_model = str(em)
+    return llm_model, llm_context_window, embedding_model
+
+
+class LettaSpawner(Spawner):
     """Parse a Letta agent export directory, database, or AgentFile."""
 
     FILE_PATTERNS = FILE_PATTERNS
@@ -206,7 +231,6 @@ class LettaSpawner:
         skills: list[RawSkill] = []
         memories: list[RawMemory] = []
         mcp_configs: dict[str, dict] = {}
-        source_metadata: dict[str, str] = {}
 
         # --- blocks (top-level list) ---
         self._parse_af_blocks(data, memories, af_name)
@@ -232,23 +256,32 @@ class LettaSpawner:
         # --- mcp_servers (top-level) ---
         self._parse_af_mcp_servers(data, mcp_configs)
 
-        # --- model config (from agent) ---
-        self._parse_af_model_config(agent, source_metadata)
+        llm_model, llm_context_window, embedding_model = _extract_af_llm_embedding(agent)
+        agent_name = agent.get("name") if isinstance(agent.get("name"), str) else None
+        agent_description = agent.get("description") if isinstance(agent.get("description"), str) else None
 
-        # --- agent-level metadata ---
-        for key in ("description", "agent_type"):
-            val = agent.get(key)
-            if val and isinstance(val, str):
-                source_metadata[f"letta.{key}"] = val
+        extra_lines: list[str] = []
+        atype = agent.get("agent_type")
+        if isinstance(atype, str) and atype:
+            extra_lines.append(f"agent_type={atype}")
         tags = agent.get("tags")
-        if isinstance(tags, list):
-            source_metadata["letta.tags"] = ",".join(str(t) for t in tags)
+        if isinstance(tags, list) and tags:
+            tag_str = ",".join(str(t) for t in tags if t is not None)
+            if tag_str:
+                extra_lines.append(f"tags={tag_str}")
+        if extra_lines:
+            suffix = "\n" + "\n".join(extra_lines)
+            agent_description = (agent_description or "") + suffix
 
         return ParseResult(
             skills=skills,
             memory=memories,
             mcp_configs=mcp_configs,
-            source_metadata=source_metadata,
+            agent_name=agent_name,
+            agent_description=agent_description,
+            llm_model=llm_model,
+            llm_context_window=llm_context_window,
+            embedding_model=embedding_model,
         )
 
     @staticmethod
@@ -433,23 +466,6 @@ class LettaSpawner:
             name = srv.get("server_name", srv.get("name", ""))
             if name:
                 mcp_configs[name] = srv
-
-    @staticmethod
-    def _parse_af_model_config(agent: dict, source_metadata: dict[str, str]) -> None:
-        """Extract LLM and embedding config from the agent dict."""
-        llm = agent.get("llm_config", {})
-        if isinstance(llm, dict):
-            for key in ("model", "model_endpoint", "model_endpoint_type", "context_window"):
-                val = llm.get(key)
-                if val is not None:
-                    source_metadata[f"letta.llm.{key}"] = str(val)
-
-        emb = agent.get("embedding_config", {})
-        if isinstance(emb, dict):
-            for key in ("embedding_model", "embedding_dim", "embedding_endpoint_type"):
-                val = emb.get(key)
-                if val is not None:
-                    source_metadata[f"letta.embedding.{key}"] = str(val)
 
     # ---------------------------------------------------------------------------
     # Parse helpers (operate on file dict, not filesystem)

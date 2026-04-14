@@ -12,18 +12,17 @@ from pynydus.api.schemas import (
     SecretsModule,
     SkillsModule,
 )
-from pynydus.common.enums import AgentType, Bucket
+from pynydus.common.enums import AgentType
 from pynydus.engine.hatcher import _check_version_compat
 
 
-def _make_egg(min_nydus_version: str = "0.1.0") -> Egg:
+def _make_egg(min_nydus_version: str = "0.0.7") -> Egg:
     return Egg(
         manifest=Manifest(
-            nydus_version="0.1.0",
+            nydus_version="0.0.7",
             min_nydus_version=min_nydus_version,
             created_at=datetime.now(UTC),
             agent_type=AgentType.OPENCLAW,
-            included_modules=[Bucket.SKILL, Bucket.MEMORY],
         ),
     )
 
@@ -31,7 +30,7 @@ def _make_egg(min_nydus_version: str = "0.1.0") -> Egg:
 class TestVersionCompat:
     def test_same_version_passes(self):
         """Current version == min_nydus_version should pass."""
-        egg = _make_egg("0.1.0")
+        egg = _make_egg("0.0.7")
         _check_version_compat(egg)
 
     def test_newer_current_passes(self):
@@ -52,7 +51,7 @@ class TestVersionCompat:
 
     def test_missing_min_version_passes(self):
         """Eggs without min_nydus_version should pass (backward compat)."""
-        egg = _make_egg("0.1.0")
+        egg = _make_egg("0.0.7")
         # Simulate old egg without the field
         egg.manifest.min_nydus_version = ""  # type: ignore[assignment]
         _check_version_compat(egg)
@@ -72,8 +71,6 @@ class TestVersionCompat:
                 min_nydus_version="99.0.0",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
-                source_metadata={},
             ),
             skills=SkillsModule(skills=[]),
             memory=MemoryModule(memory=[]),

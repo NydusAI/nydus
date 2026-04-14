@@ -16,7 +16,7 @@ nydus --help
 ```
 
 
-You should see commands such as `spawn`, `hatch`, `env`, `inspect`, `validate`,
+You should see commands such as `spawn`, `hatch`, `env`, `inspect`, `extract`,
 `diff`, `delete`, `keygen`, `push`, `pull`, `register`, `login`, and `logout`.
 
 ### Supported platforms
@@ -63,7 +63,7 @@ export NYDUS_GITLEAKS_PATH=/path/to/gitleaks
 | `nydus spawn` with `REDACT false` | No |
 | `nydus spawn` with `FROM` only (no `SOURCE`) | No |
 | `nydus hatch` | No |
-| `nydus env`, `inspect`, `validate`, `diff`, `delete`, `keygen`, `push`, `pull`, `register`, `login`, `logout` | No |
+| `nydus env`, `inspect`, `extract`, `diff`, `delete`, `keygen`, `push`, `pull`, `register`, `login`, `logout` | No |
 
 ## Optional: LLM refinement
 

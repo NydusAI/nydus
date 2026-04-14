@@ -66,6 +66,9 @@ def hatch(
     hatch_log: list[dict] = []
     warnings: list[str] = []
 
+    if isinstance(target, str):
+        target = AgentType(target)
+
     if spawn_log is None and egg.spawn_log:
         spawn_log = egg.spawn_log
     if raw_artifacts is None and egg.raw_artifacts:
@@ -99,7 +102,7 @@ def hatch(
         )
     else:
         connector = _get_hatcher(target)
-        render_result = connector.render(egg)
+        render_result = connector.render(egg, output)
         file_dict = dict(render_result.files)
         warnings.extend(render_result.warnings)
         hatch_log.append(
@@ -122,6 +125,7 @@ def hatch(
             file_dict,
             egg,
             llm_config,
+            target=target.value,
             log=hatch_log,
             spawn_log=spawn_log,
             raw_artifacts=raw_artifacts,
@@ -141,6 +145,11 @@ def hatch(
                         "placeholder": placeholder,
                     }
                 )
+
+    # --- Step 4b: Passthrough apm.yml if present ---
+    if egg.apm_yml:
+        file_dict["apm.yml"] = egg.apm_yml
+        hatch_log.append({"type": "apm_passthrough"})
 
     # --- Step 5: Write to disk ---
     files_created = _write_files(file_dict, output)

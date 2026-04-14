@@ -18,11 +18,11 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     EggPartial,
     MemoryModule,
     MemoryRecord,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import AgentType, MemoryLabel
@@ -394,10 +394,13 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
         The same EggPartial with its skills module updated.
     """
     skills = partial.skills.skills
-    lookup: dict[str, SkillRecord] = {s.id: s for s in skills}
+    lookup: dict[str, AgentSkill] = {s.metadata.get("id", s.name): s for s in skills}
 
     serialized = json.dumps(
-        [{"id": s.id, "name": s.name, "content": s.content} for s in skills],
+        [
+            {"id": s.metadata.get("id", s.name), "name": s.name, "content": s.body}
+            for s in skills
+        ],
         indent=2,
     )
 
@@ -425,17 +428,17 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
         return partial
 
     # Update skills from LLM output
-    new_skills: list[SkillRecord] = []
+    new_skills: list[AgentSkill] = []
     for refined in result.skills:
         original = lookup.get(refined.original_id)
         if original is None:
             logger.warning("Refined skill references unknown ID %s, skipping", refined.original_id)
             continue
 
-        missing = _find_missing_placeholders(original.content, refined.content)
+        missing = _find_missing_placeholders(original.body, refined.content)
         safe_content = refined.content
         if missing:
-            safe_content = original.content
+            safe_content = original.body
             logger.warning(
                 "Skill %s dropped placeholders %s. Keeping original content",
                 refined.original_id,
@@ -456,14 +459,14 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
                 "name_changed": refined.name != original.name,
                 "old_name": original.name,
                 "new_name": refined.name,
-                "content_changed": safe_content != original.content,
+                "content_changed": safe_content != original.body,
             }
         )
 
         new_skill = original.model_copy(
             update={
                 "name": refined.name,
-                "content": safe_content,
+                "body": safe_content,
             }
         )
         new_skills.append(new_skill)
@@ -490,6 +493,7 @@ def refine_hatch(
     egg: Egg,
     llm_config: LLMTierConfig,
     *,
+    target: str | None = None,
     log: list[dict] | None = None,
     spawn_log: list[dict] | None = None,
     raw_artifacts: dict[str, str] | None = None,
@@ -504,6 +508,7 @@ def refine_hatch(
         file_dict: Reconstructed files (paths relative to output root).
         egg: Egg being hatched (manifest, secrets metadata, agent type).
         llm_config: LLM provider, model, and API key.
+        target: Explicit target platform type (e.g. "openclaw").
         log: If set, hatch log entries (warnings, reverts) are appended here.
         spawn_log: Optional spawn pipeline log forwarded into the LLM context.
         raw_artifacts: Optional redacted ``raw/`` snapshot for extra LLM context.
@@ -517,7 +522,7 @@ def refine_hatch(
         return file_dict
 
     source_type = egg.manifest.agent_type
-    target_type = _infer_target_type(file_dict)
+    target_type = AgentType(target) if target else None
     same_platform = target_type is not None and source_type == target_type
 
     file_listing = ""
@@ -659,17 +664,3 @@ def refine_hatch(
     return result
 
 
-def _infer_target_type(file_dict: dict[str, str]) -> AgentType | None:
-    """Best-effort infer the target platform from file names."""
-    filenames = set(file_dict)
-    if "agent.af" in filenames or "agent_state.json" in filenames:
-        return AgentType.LETTA
-    if any(f.endswith(".af") for f in filenames):
-        return AgentType.LETTA
-    if "soul.md" in filenames or "SOUL.md" in filenames:
-        return AgentType.OPENCLAW
-    if "persona.md" in filenames:
-        return AgentType.ZEROCLAW
-    if "agents.md" in filenames or "AGENTS.md" in filenames:
-        return AgentType.OPENCLAW
-    return None

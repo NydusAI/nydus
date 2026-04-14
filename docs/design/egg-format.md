@@ -3,20 +3,28 @@
 ## Data model
 
 
-An `Egg` has four modules, defined in {py:mod}`pynydus.api.schemas`:
+An `Egg` has core modules and standard artifact fields, defined in {py:mod}`pynydus.api.schemas`:
 
 | Module | Class | Contents |
 |--------|-------|----------|
-| **Manifest** | `Manifest` | Nydus version, egg spec version (`"2.0"`), timestamp, source type, included modules, redaction policy, optional signature |
-| **Skills** | `SkillsModule` | List of `SkillRecord` (id, name, content) plus optional MCP server configurations |
+| **Manifest** | `Manifest` | Nydus version, egg spec version (`"1.0"`), timestamp, agent type, neutral metadata (agent name, LLM model, etc.), redaction policy, optional signature |
+| **Skills** | `SkillsModule` | List of `AgentSkill` ([agentskills.io](https://agentskills.io) format) |
+| **MCP** | `McpModule` | Raw MCP server configs as `dict[str, Any]` (Claude Desktop format) |
 | **Memory** | `MemoryModule` | List of `MemoryRecord`, each labeled Memory[**persona**], Memory[**flow**], Memory[**context**], or Memory[**state**] |
 | **Secrets** | `SecretsModule` | List of `SecretRecord` placeholders (`{{SECRET_001}}`, `{{PII_001}}`) with injection metadata |
 
 
 ```python
-egg.skills.skills     # list[SkillRecord]
+egg.skills.skills     # list[AgentSkill]
+egg.mcp.configs       # dict[str, dict[str, Any]]
 egg.memory.memory     # list[MemoryRecord]
 egg.secrets.secrets   # list[SecretRecord]
+
+# Standard artifact fields (populated during spawn)
+egg.a2a_card          # dict | None  — A2A agent card
+egg.agents_md         # str | None   — per-egg AGENTS.md deployment runbook
+egg.apm_yml           # str | None   — passthrough APM manifest
+egg.spec_snapshots    # dict[str, str] | None — embedded spec snapshots
 ```
 
 ## The `.egg` archive format
@@ -26,28 +34,43 @@ A packed Egg is a ZIP file:
 
 ```text
 agent.egg
-├── manifest.json       Manifest metadata
-├── memory.json         Memory records (labeled)
-├── secrets.json        Secret/PII placeholders + injection metadata
+├── manifest.json         Manifest metadata (neutral fields, versions, redaction policy)
+├── memory.json           Memory records (labeled)
+├── secrets.json          Secret/PII placeholders + injection metadata
 ├── skills/
 │   └── <slug>/
-│       └── SKILL.md    Skill content (YAML front matter + Markdown)
-├── nydus.json          Skill slug to {id, agent_type} mapping
-├── mcp/
-│   └── <server>.json   MCP server configs
+│       └── SKILL.md      Skill content (YAML front matter + Markdown, agentskills.io)
+├── nydus.json            Skill slug → {id, agent_type} mapping
+├── mcp.json              MCP server configs (Claude Desktop format)
+├── agent-card.json       A2A agent card (passthrough or generated)
+├── AGENTS.md             Per-egg deployment runbook
+├── apm.yml               APM manifest (passthrough from source, if present)
+├── specs/
+│   ├── manifest.json     Spec version manifest (Nydus version, spec sources)
+│   ├── mcp.md            MCP spec snapshot
+│   ├── agentskills.md    Agent Skills spec snapshot
+│   ├── a2a.md            A2A spec snapshot
+│   ├── apm.md            APM spec snapshot
+│   └── agents.md         AGENTS.md spec snapshot
 ├── raw/
-│   └── ...             Redacted source files (for passthrough hatch)
-├── spawn_log.json      Pipeline event log
-├── apm.yml             APM compatibility manifest
-├── signature.json      Ed25519 signature (optional)
-└── Nydusfile           Copy of the workspace Nydusfile
+│   └── ...               Redacted source files (for passthrough mode hatch)
+├── spawn_log.json        Pipeline event log
+├── signature.json        Ed25519 signature (optional)
+└── Nydusfile             Copy of the workspace Nydusfile
 ```
 
 
-Skills use the [Agent Skills](https://agentskills.io) Markdown format for
-human readability. `apm.yml` enables
-[APM](https://github.com/microsoft/apm) compatibility. `raw/` is optional
-provenance used for passthrough hatching, not the canonical model.
+### Standard artifacts
+
+| File | Standard | Notes |
+|------|----------|-------|
+| `mcp.json` | [MCP](https://modelcontextprotocol.io/) | Claude Desktop format: `{ "mcpServers": { "<name>": { ... } } }`. Nydus stores raw configs without re-modeling. |
+| `skills/<slug>/SKILL.md` | [Agent Skills](https://agentskills.io) | YAML frontmatter + Markdown body. |
+| `agent-card.json` | [A2A](https://a2a-protocol.org/latest/) | Passthrough-first: if source has `agent-card.json`, it's copied verbatim. Otherwise generated from egg data. |
+| `apm.yml` | [APM](https://microsoft.github.io/apm/) | Pure passthrough — Nydus copies but never parses or validates. |
+| `AGENTS.md` | [AGENTS.md](https://agents.md/) | Generated deployment runbook with prerequisites, hatch instructions, secrets, and skills. |
+| `specs/` | — | Embedded spec snapshots for self-sustained eggs. `manifest.json` records versions and sources. |
+
 
 ## Manifest fields
 
@@ -57,15 +80,19 @@ provenance used for passthrough hatching, not the canonical model.
 | Field | Type | Description |
 |-------|------|-------------|
 | `nydus_version` | string | PyNydus version that created this Egg |
-| `min_nydus_version` | string | Minimum PyNydus version required to open this Egg (default `"0.1.0"`) |
-| `egg_version` | string | Egg format spec version (`"2.0"`) |
+| `min_nydus_version` | string | Minimum PyNydus version required to open this Egg (default `"0.0.7"`) |
+| `egg_version` | string | Egg format spec version (`"1.0"`) |
 | `created_at` | ISO 8601 | Timestamp of Egg creation |
 | `agent_type` | string | Source platform (`openclaw`, `letta`, `zeroclaw`) |
-| `included_modules` | list | Which modules are populated (`["skill", "memory", "secret"]`) |
+| `agent_name` | string or null | Human-readable agent name (cross-platform neutral) |
+| `agent_description` | string or null | Agent description (cross-platform neutral) |
+| `llm_model` | string or null | LLM model identifier (e.g. `gpt-4o`) |
+| `llm_context_window` | int or null | Context window size in tokens |
+| `embedding_model` | string or null | Embedding model identifier |
+| `source_dir` | string or null | Original source directory path |
 | `signature` | string | Ed25519 signature (empty if unsigned) |
 | `base_egg` | string or null | `FROM` reference (registry qualifier or local path, e.g. `"nydus/openclaw:0.3.0"` or `"./base.egg"`) |
 | `redaction_policy` | object | `{pii_redacted: bool, secrets_placeholder_only: bool}` |
-| `source_metadata` | object | Platform-specific metadata from the spawner (e.g., agent name, model) |
 | `sources` | list | At most one `{agent_type, source_path}` entry |
 
 ## Memory record schema
@@ -83,7 +110,6 @@ Each entry in `memory.json` is a `MemoryRecord`:
 | `skill_ref` | string or null | Associated skill ID (if this memory relates to a skill) |
 | `timestamp` | ISO 8601 or null | When this memory was created or last updated |
 | `shareable` | bool | Whether this record can be shared (default `true`) |
-| `metadata` | object | Additional key-value metadata |
 
 Example:
 
@@ -96,8 +122,7 @@ Example:
   "source_store": "SOUL.md",
   "skill_ref": null,
   "timestamp": null,
-  "shareable": true,
-  "metadata": {"source_file": "SOUL.md"}
+  "shareable": true
 }
 ```
 

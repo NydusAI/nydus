@@ -9,9 +9,9 @@ Produces a valid ZeroClaw project directory from an Egg:
 - knowledge.md         <- undated state memory
 - memory/YYYY-MM-DD.md <- dated state memory (one file per day)
 - tools/               <- skill records as Python tool files
-- config.toml          <- credential placeholders + round-tripped source metadata
+- config.toml          <- credential placeholders + round-tripped manifest fields
 - .zeroclaw/           <- marker directory for project detection
-- mcp/                 <- MCP server configs
+- mcp.json             <- MCP servers (Claude Desktop ``mcpServers`` format)
 
 All 4 MemoryLabel values have explicit file mappings.  Records are
 fanned back to separate files using ``source_store`` metadata, matching
@@ -20,18 +20,17 @@ the structure the spawner reads on ingest.
 
 from __future__ import annotations
 
-import re
+import json
 from collections import defaultdict
 from pathlib import Path
 
 from pynydus.api.errors import HatchError
+from pynydus.api.protocols import Hatcher
 from pynydus.api.raw_types import RenderResult
-from pynydus.api.schemas import (
-    Egg,
-    HatchResult,
-    MemoryRecord,
-    ValidationIssue,
-    ValidationReport,
+from pynydus.api.schemas import Egg, HatchResult, MemoryRecord
+from pynydus.common.connector_utils import (
+    date_key_from_record as _date_key_from_record,
+    join_records as _join_records,
 )
 from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
 from pynydus.common.enums import MemoryLabel, SecretKind
@@ -47,54 +46,42 @@ def _is_tools_source(rec: MemoryRecord) -> bool:
     return rec.source_store.lower() in ("tools.md",)
 
 
-def _date_key_from_record(rec: MemoryRecord) -> str | None:
-    """Extract a YYYY-MM-DD date key from a state record.
-
-    Prefers the record's timestamp field. falls back to extracting a date
-    from source_store (e.g. ``memory/2026-04-01.md``).
-    """
-    if rec.timestamp:
-        return rec.timestamp.strftime("%Y-%m-%d")
-    m = re.search(r"(\d{4}-\d{2}-\d{2})", rec.source_store)
-    if m:
-        return m.group(1)
-    return None
-
-
-def _join_records(records: list[MemoryRecord]) -> str:
-    """Join memory records into a single file's content."""
-    return "\n\n".join(r.text for r in records) + "\n"
+def _toml_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _build_config_toml(
     credentials: list[tuple[str, str]],
-    source_metadata: dict[str, str],
+    *,
+    agent_name: str | None = None,
+    agent_description: str | None = None,
+    llm_model: str | None = None,
+    agent_version: str | None = None,
 ) -> str:
-    """Build a TOML config string from credentials and source metadata.
+    """Build a TOML config string from credentials and neutral manifest fields.
 
     Args:
         credentials: List of ``(name, placeholder)`` pairs for each credential.
-        source_metadata: Key-value metadata from the Egg manifest.
+        agent_name: Optional agent display name from manifest.
+        agent_description: Optional description from manifest.
+        llm_model: Optional model id from manifest.
+        agent_version: Optional version string (e.g. from spawn metadata).
 
     Returns:
         TOML-formatted string, or empty string if nothing to write.
     """
     lines: list[str] = []
 
-    agent_name = source_metadata.get("zeroclaw.agent.name") or source_metadata.get("zeroclaw.name")
-    agent_model = source_metadata.get("zeroclaw.agent.model") or source_metadata.get(
-        "zeroclaw.model"
-    )
-    agent_version = source_metadata.get("zeroclaw.version")
-
-    if agent_name or agent_model or agent_version:
+    if agent_name or llm_model or agent_description or agent_version:
         lines.append("[agent]")
         if agent_name:
-            lines.append(f'name = "{agent_name}"')
-        if agent_model:
-            lines.append(f'model = "{agent_model}"')
+            lines.append(f'name = "{_toml_escape(agent_name)}"')
+        if llm_model:
+            lines.append(f'model = "{_toml_escape(llm_model)}"')
+        if agent_description:
+            lines.append(f'description = "{_toml_escape(agent_description)}"')
         if agent_version:
-            lines.append(f'version = "{agent_version}"')
+            lines.append(f'version = "{_toml_escape(agent_version)}"')
         lines.append("")
 
     if credentials:
@@ -106,10 +93,10 @@ def _build_config_toml(
     return "\n".join(lines) + "\n" if lines else ""
 
 
-class ZeroClawHatcher:
+class ZeroClawHatcher(Hatcher):
     """Produce a valid ZeroClaw project directory from an Egg."""
 
-    def render(self, egg: Egg) -> RenderResult:
+    def render(self, egg: Egg, output_dir: Path) -> RenderResult:
         """Render Egg records into ZeroClaw project files.
 
         Placeholders (``{{SECRET_NNN}}``, ``{{PII_NNN}}``) are preserved.
@@ -117,10 +104,12 @@ class ZeroClawHatcher:
 
         Args:
             egg: The Egg to render.
+            output_dir: Target directory (unused; pipeline performs disk I/O).
 
         Returns:
             File dict and any warnings produced during rendering.
         """
+        _ = output_dir
         files: dict[str, str] = {}
         warnings: list[str] = []
 
@@ -182,28 +171,28 @@ class ZeroClawHatcher:
         if egg.skills.skills:
             for skill in egg.skills.skills:
                 fname = _skill_to_filename(skill.name)
-                files[f"tools/{fname}"] = skill.content + "\n"
+                files[f"tools/{fname}"] = skill.body + "\n"
 
-        # --- config.toml (credential placeholders + source metadata) ---
+        # --- config.toml (credential placeholders + neutral manifest fields) ---
         credentials = [
             (s.name, s.placeholder) for s in egg.secrets.secrets if s.kind == SecretKind.CREDENTIAL
         ]
-        source_metadata = egg.manifest.source_metadata or {}
-        toml_content = _build_config_toml(credentials, source_metadata)
+        toml_content = _build_config_toml(
+            credentials,
+            agent_name=egg.manifest.agent_name,
+            agent_description=egg.manifest.agent_description,
+            llm_model=egg.manifest.llm_model,
+        )
         if toml_content.strip():
             files["config.toml"] = toml_content
 
         # --- .zeroclaw/ marker directory ---
         files[".zeroclaw/.keep"] = ""
 
-        # --- mcp/ directory (MCP server configs) ---
-        if egg.skills.mcp_configs:
-            import json
-
-            for name, cfg in sorted(egg.skills.mcp_configs.items()):
-                files[f"mcp/{name}.json"] = (
-                    json.dumps(cfg.model_dump(exclude_defaults=True), indent=2) + "\n"
-                )
+        # --- mcp.json (Claude Desktop format) ---
+        if egg.mcp.configs:
+            mcp_doc = {"mcpServers": dict(egg.mcp.configs)}
+            files["mcp.json"] = json.dumps(mcp_doc, indent=2) + "\n"
 
         if not files:
             raise HatchError("Egg produced no output files for ZeroClaw target")
@@ -223,7 +212,7 @@ class ZeroClawHatcher:
         Returns:
             Result with list of created files and any warnings.
         """
-        result = self.render(egg)
+        result = self.render(egg, output_dir)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         files_created: list[str] = []
@@ -241,42 +230,4 @@ class ZeroClawHatcher:
             output_dir=output_dir,
             files_created=files_created,
             warnings=list(result.warnings),
-        )
-
-    def validate(self, result: HatchResult) -> ValidationReport:
-        """Validate generated ZeroClaw output.
-
-        Args:
-            result: The hatch result to validate.
-
-        Returns:
-            Report with ``valid`` flag and any issues found.
-        """
-        issues: list[ValidationIssue] = []
-
-        has_persona = "persona.md" in result.files_created
-        has_tools = any(f.startswith("tools/") for f in result.files_created)
-        if not has_persona and not has_tools:
-            issues.append(
-                ValidationIssue(
-                    level="warning",
-                    message="Neither persona.md nor tools/ was generated",
-                    location=str(result.output_dir),
-                )
-            )
-
-        for fname in result.files_created:
-            fpath = result.output_dir / fname
-            if not fpath.exists():
-                issues.append(
-                    ValidationIssue(
-                        level="error",
-                        message=f"Expected file not found: {fname}",
-                        location=str(fpath),
-                    )
-                )
-
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues),
-            issues=issues,
         )

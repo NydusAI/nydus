@@ -8,19 +8,18 @@ from pathlib import Path
 import pytest
 from pynydus import Nydus
 from pynydus.api.schemas import (
+    AgentSkill,
     DiffReport,
     Egg,
     HatchResult,
     Manifest,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
     ValidationReport,
 )
 from pynydus.common.enums import (
     AgentType,
-    Bucket,
     InjectionMode,
     SecretKind,
 )
@@ -112,10 +111,9 @@ class TestInspectSecrets:
     def test_inspect_secrets_format(self):
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SECRET],
             ),
             secrets=SecretsModule(
                 secrets=[
@@ -142,10 +140,9 @@ class TestInspectSecrets:
     def test_inspect_secrets_empty(self):
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime.now(UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[],
             ),
         )
         assert egg.inspect_secrets() == []
@@ -217,24 +214,23 @@ class TestValidate:
     def test_invalid_egg_duplicate_ids(self, nydus: Nydus):
         egg = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="dup",
+                    AgentSkill(
                         name="A",
-                        agent_type="markdown_skill",
-                        content="a",
+                        description="",
+                        body="a",
+                        metadata={"id": "dup", "source_framework": "markdown_skill"},
                     ),
-                    SkillRecord(
-                        id="dup",
+                    AgentSkill(
                         name="B",
-                        agent_type="markdown_skill",
-                        content="b",
+                        description="",
+                        body="b",
+                        metadata={"id": "dup", "source_framework": "markdown_skill"},
                     ),
                 ]
             ),
@@ -259,36 +255,34 @@ class TestDiff:
     def test_different(self, nydus: Nydus):
         egg_a = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="s1",
+                    AgentSkill(
                         name="Old",
-                        agent_type="markdown_skill",
-                        content="old",
+                        description="",
+                        body="old",
+                        metadata={"id": "s1", "source_framework": "markdown_skill"},
                     )
                 ]
             ),
         )
         egg_b = Egg(
             manifest=Manifest(
-                nydus_version="0.1.0",
+                nydus_version="0.0.7",
                 created_at=datetime(2024, 1, 1, tzinfo=UTC),
                 agent_type=AgentType.OPENCLAW,
-                included_modules=[Bucket.SKILL],
             ),
             skills=SkillsModule(
                 skills=[
-                    SkillRecord(
-                        id="s1",
+                    AgentSkill(
                         name="New",
-                        agent_type="markdown_skill",
-                        content="new",
+                        description="",
+                        body="new",
+                        metadata={"id": "s1", "source_framework": "markdown_skill"},
                     )
                 ]
             ),

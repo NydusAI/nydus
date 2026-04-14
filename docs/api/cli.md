@@ -76,22 +76,30 @@ nydus inspect <EGG_PATH> [OPTIONS]
 | `EGG_PATH` | (required) | Path to `.egg` file |
 | `--secrets` | `false` | List all placeholders and occurrences |
 | `--logs` | `false` | Show pipeline log summary |
+| `--no-validate` | `false` | Skip per-standard schema validation |
 
 ---
 
-## validate
+## extract
 
 
-Check Egg integrity. Exits with code 1 if invalid.
+Extract standard artifacts from an Egg. Subcommands: `mcp`, `skills`, `a2a`,
+`apm`, `agents`, `specs`, `all`.
 
 
 ```bash
-nydus validate <EGG_PATH>
+nydus extract <SUBCOMMAND> --from <EGG_PATH> [-o <OUTPUT_DIR>]
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `EGG_PATH` | (required) | Path to `.egg` file |
+| Subcommand | Default output | Description |
+|------------|----------------|-------------|
+| `mcp` | `.` | Extract `mcp.json` |
+| `skills` | `.` | Extract `skills/<slug>/SKILL.md` files |
+| `a2a` | `.` | Extract `agent-card.json` |
+| `apm` | `.` | Extract `apm.yml` (passthrough) |
+| `agents` | `.` | Extract per-egg `AGENTS.md` |
+| `specs` | `./specs` | Extract embedded spec snapshots |
+| `all` | `./extracted` | Extract all artifacts at once |
 
 ---
 

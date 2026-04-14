@@ -40,13 +40,30 @@ Source artifacts → Spawn → Egg (.egg) → Hatch → Target-native files
 An `.egg` file is a signed ZIP archive containing:
 
 ```
-manifest.json          # metadata, source type, versions
+manifest.json          # metadata, neutral fields, versions
 memory.json            # labeled memory records
 secrets.json           # PII placeholders + secret requirements
 skills/<slug>/SKILL.md # portable skill definitions (agentskills.io)
-mcp/<server>.json      # MCP server configs
+mcp.json               # MCP server configs (Claude Desktop format)
+agent-card.json        # A2A agent card
+AGENTS.md              # per-egg deployment runbook
+apm.yml                # APM manifest (passthrough, if present)
+specs/                 # embedded spec snapshots for self-sustained eggs
 raw/...                # redacted source files (for passthrough mode hatch)
 ```
+
+### Agentic standards
+
+Nydus integrates with five agentic standards. Each has a spec file in `specs/`,
+validation against its schema, and an `extract` CLI command:
+
+| Standard | Spec source | Egg artifact |
+|----------|-------------|--------------|
+| [MCP](https://modelcontextprotocol.io/) | `specs/mcp.md` | `mcp.json` |
+| [Agent Skills](https://agentskills.io) | `specs/agentskills.md` | `skills/<slug>/SKILL.md` |
+| [A2A](https://a2a-protocol.org/latest/) | `specs/a2a.md` | `agent-card.json` |
+| [APM](https://microsoft.github.io/apm/) | `specs/apm.md` | `apm.yml` |
+| [AGENTS.md](https://agents.md/) | `specs/agents.md` | `AGENTS.md` |
 
 ## Install
 
@@ -92,10 +109,18 @@ EOF
 # Spawn an egg
 nydus spawn -o agent.egg
 
-# Inspect and validate
+# Inspect (includes inline validation)
 nydus inspect agent.egg
 nydus inspect agent.egg --secrets --logs
-nydus validate agent.egg
+
+# Extract standard artifacts
+nydus extract mcp --from agent.egg -o ./out
+nydus extract skills --from agent.egg -o ./out
+nydus extract a2a --from agent.egg -o ./out
+nydus extract apm --from agent.egg -o ./out
+nydus extract agents --from agent.egg -o ./out
+nydus extract specs --from agent.egg -o ./specs
+nydus extract all --from agent.egg -o ./extracted
 
 # Generate a template .env from the egg's secret requirements
 nydus env agent.egg -o agent.env
@@ -135,17 +160,19 @@ print(result.output_dir, result.files_created)
 
 ```
 pynydus/
-  api/           # Egg data model, schemas, errors
+  api/           # Egg data model, schemas, protocols (Spawner/Hatcher ABCs), errors
   agents/        # Per-platform spawners + hatchers (openclaw, zeroclaw, letta)
-  engine/        # Core pipelines: spawn, hatch, save/load egg, validate, diff, merge, refine
+  engine/        # Core pipelines: spawn, hatch, save/load egg, diff, merge, refine, validate
+  standards/     # Per-standard modules: mcp, skills, a2a, apm, agents_md (validate/extract/generate)
   security/      # Presidio, gitleaks, Ed25519 signing
-  cmd/           # Typer CLI
+  cmd/           # Typer CLI (spawn, hatch, inspect, extract, diff, env, keygen, push/pull)
   client/        # Python SDK (Nydus class)
   common/        # Shared enums, connector helpers, scan_paths
   llm/           # LLM tier models and Instructor client
   config.py      # Environment-based config loader
   remote/        # Nest registry client
   eggs/base/     # Base egg source definitions (Nydusfile + agent files per version)
+specs/           # Spec files with embedded JSON Schema (mcp, agentskills, a2a, apm, agents)
 tests/
   unit/          # Unit tests (mocked dependencies)
   integration/   # Integration tests (full pipeline, requires gitleaks)

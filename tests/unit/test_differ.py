@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     Manifest,
     MemoryModule,
     MemoryRecord,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import (
@@ -31,16 +31,15 @@ from pynydus.engine.differ import diff_eggs
 def _make_egg(
     *,
     agent_type: AgentType = AgentType.OPENCLAW,
-    skills: list[SkillRecord] | None = None,
+    skills: list[AgentSkill] | None = None,
     memory: list[MemoryRecord] | None = None,
     secrets: list[SecretRecord] | None = None,
 ) -> Egg:
     return Egg(
         manifest=Manifest(
-            nydus_version="0.1.0",
+            nydus_version="0.0.7",
             created_at=datetime(2024, 1, 1, tzinfo=UTC),
             agent_type=agent_type,
-            included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
         ),
         skills=SkillsModule(skills=skills or []),
         memory=MemoryModule(memory=memory or []),
@@ -48,12 +47,12 @@ def _make_egg(
     )
 
 
-def _skill(id: str, name: str = "skill", content: str = "content") -> SkillRecord:
-    return SkillRecord(
-        id=id,
+def _skill(id: str, name: str = "skill", content: str = "content") -> AgentSkill:
+    return AgentSkill(
         name=name,
-        agent_type="markdown_skill",
-        content=content,
+        description="",
+        body=content,
+        metadata={"id": id, "source_framework": "markdown_skill"},
     )
 
 
@@ -127,9 +126,9 @@ class TestSkillDiff:
         report = diff_eggs(a, b)
 
         modified = [e for e in report.entries if e.change == DiffChange.MODIFIED]
-        assert len(modified) == 2  # name + content
+        assert len(modified) == 2  # name + body
         fields = {e.field for e in modified}
-        assert fields == {"name", "content"}
+        assert fields == {"name", "body"}
 
     def test_skill_unchanged_not_reported(self):
         s = _skill("s1", name="Same", content="Same")

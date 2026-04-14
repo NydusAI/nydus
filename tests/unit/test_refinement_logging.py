@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pynydus.api.schemas import (
+    AgentSkill,
     MemoryModule,
     MemoryRecord,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import MemoryLabel
@@ -51,19 +51,19 @@ def memory_records() -> list[MemoryRecord]:
 
 
 @pytest.fixture()
-def skill_records() -> list[SkillRecord]:
+def skill_records() -> list[AgentSkill]:
     return [
-        SkillRecord(
-            id="skill_001",
+        AgentSkill(
             name="summarize",
-            agent_type="markdown_skill",
-            content="Summarize a document into bullets.",
+            description="",
+            body="Summarize a document into bullets.",
+            metadata={"id": "skill_001", "source_framework": "markdown_skill"},
         ),
-        SkillRecord(
-            id="skill_002",
+        AgentSkill(
             name="translate",
-            agent_type="markdown_skill",
-            content="Translate text between languages.",
+            description="",
+            body="Translate text between languages.",
+            metadata={"id": "skill_002", "source_framework": "markdown_skill"},
         ),
     ]
 
@@ -186,7 +186,7 @@ class TestSkillRefinedLogging:
     def test_skill_refined_logged(
         self,
         mock_completion: MagicMock,
-        skill_records: list[SkillRecord],
+        skill_records: list[AgentSkill],
         llm_config: LLMTierConfig,
     ):
         mock_completion.return_value = RefinedSkillsOutput(
@@ -224,7 +224,7 @@ class TestSkillRefinedLogging:
     def test_skill_refinement_done_logged(
         self,
         mock_completion: MagicMock,
-        skill_records: list[SkillRecord],
+        skill_records: list[AgentSkill],
         llm_config: LLMTierConfig,
     ):
         mock_completion.return_value = RefinedSkillsOutput(
@@ -254,7 +254,7 @@ class TestSkillRefinedLogging:
     def test_llm_failure_no_skill_log(
         self,
         mock_completion: MagicMock,
-        skill_records: list[SkillRecord],
+        skill_records: list[AgentSkill],
         llm_config: LLMTierConfig,
     ):
         mock_completion.return_value = None

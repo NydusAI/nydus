@@ -14,6 +14,7 @@ common
 config
 schemas
 raw_types
+protocols
 errors
 /apidocs/index
 ```

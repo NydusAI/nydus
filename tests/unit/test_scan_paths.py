@@ -10,28 +10,24 @@ class TestClassify:
         assert classify("font.woff2") == "ignored"
         assert classify("model.bin") == "ignored"
 
-    def test_structured(self):
-        assert classify("config.json") == "structured"
-        assert classify("values.yaml") == "structured"
-        assert classify("data.yml") == "structured"
-
-    def test_markdown(self):
-        assert classify("README.md") == "markdown"
-        assert classify("doc.mdx") == "markdown"
-
     def test_plain(self):
         assert classify("script.py") == "plain"
         assert classify("code.ts") == "plain"
         assert classify("Makefile") == "plain"
-        assert classify("SOUL.md") == "markdown"
+        assert classify("SOUL.md") == "plain"
+        assert classify("config.json") == "plain"
+        assert classify("values.yaml") == "plain"
+        assert classify("data.yml") == "plain"
+        assert classify("README.md") == "plain"
+        assert classify("doc.mdx") == "plain"
 
     def test_no_extension(self):
         assert classify("Dockerfile") == "plain"
 
     def test_case_insensitive_extension(self):
         assert classify("image.PNG") == "ignored"
-        assert classify("data.JSON") == "structured"
-        assert classify("notes.MD") == "markdown"
+        assert classify("data.JSON") == "plain"
+        assert classify("notes.MD") == "plain"
 
 
 class TestPartitionFiles:

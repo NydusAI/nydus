@@ -11,12 +11,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     EggPartial,
     MemoryLabel,
     MemoryModule,
     MemoryRecord,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.engine.refinement import (
@@ -41,11 +41,11 @@ def sample_partial() -> EggPartial:
     return EggPartial(
         skills=SkillsModule(
             skills=[
-                SkillRecord(
-                    id="skill_001",
+                AgentSkill(
                     name="test skill",
-                    agent_type="markdown_skill",
-                    content="Test content.",
+                    description="",
+                    body="Test content.",
+                    metadata={"id": "skill_001", "source_framework": "markdown_skill"},
                 )
             ]
         ),
@@ -205,7 +205,7 @@ class TestHatchRefinementLogging:
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
         hatch_log: list[dict] = []
-        refine_hatch(file_dict, minimal_egg, llm_config, log=hatch_log)
+        refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw", log=hatch_log)
 
         call_kwargs = mock_completion.call_args.kwargs
         assert call_kwargs["log"] is hatch_log
@@ -221,7 +221,7 @@ class TestHatchRefinementLogging:
         file_dict = {"SOUL.md": "Content"}
         mock_completion.return_value = AdaptedFilesOutput(files=[])
 
-        refine_hatch(file_dict, minimal_egg, llm_config)
+        refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw")
 
         call_kwargs = mock_completion.call_args.kwargs
         assert call_kwargs["log"] is None

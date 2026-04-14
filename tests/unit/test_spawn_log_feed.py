@@ -30,7 +30,9 @@ class TestSpawnLogInHatchPrompt:
         ]
         file_dict = {"SOUL.md": "Hello"}
 
-        refine_hatch(file_dict, minimal_egg, llm_config, spawn_log=spawn_log)
+        refine_hatch(
+            file_dict, minimal_egg, llm_config, target="openclaw", spawn_log=spawn_log
+        )
 
         user_msg = mock_completion.call_args[1]["messages"][1]["content"]
         assert "Spawn log:" in user_msg
@@ -48,7 +50,7 @@ class TestSpawnLogInHatchPrompt:
         mock_completion.return_value = None
         file_dict = {"SOUL.md": "Hello"}
 
-        refine_hatch(file_dict, minimal_egg, llm_config, spawn_log=[])
+        refine_hatch(file_dict, minimal_egg, llm_config, target="openclaw", spawn_log=[])
 
         user_msg = mock_completion.call_args[1]["messages"][1]["content"]
         assert "Spawn log:" not in user_msg
@@ -66,7 +68,9 @@ class TestSpawnLogInHatchPrompt:
         ]
         file_dict = {"SOUL.md": "Hello"}
 
-        refine_hatch(file_dict, minimal_egg, llm_config, spawn_log=spawn_log)
+        refine_hatch(
+            file_dict, minimal_egg, llm_config, target="openclaw", spawn_log=spawn_log
+        )
 
         user_msg = mock_completion.call_args[1]["messages"][1]["content"]
         start = user_msg.index("Spawn log:\n") + len("Spawn log:\n")

@@ -14,6 +14,19 @@ See {doc}`/guides/configuration` for all environment variables.
 
 Two refinement passes run if LLM config is available and modules are non-empty:
 
+### Skill cleanup
+
+The LLM receives all skill records as JSON (id, name, content) and is prompted
+to:
+
+1. Normalize skill names (casing, remove redundant prefixes/suffixes).
+2. Fix formatting (whitespace, heading levels, code block fencing).
+3. Return exactly one output per input skill (1:1, no merging).
+4. Preserve placeholder tokens exactly.
+
+The response is a structured `RefinedSkillsOutput`: one `RefinedSkillRecord`
+per input skill. Unknown IDs in the output are skipped.
+
 ### Memory deduplication
 
 The LLM receives all memory records as JSON (id, text, label) and is prompted
@@ -31,19 +44,6 @@ multiple `original_ids` are merges. The output count may be less than or
 equal to the input count.
 
 If the LLM returns unknown record IDs, those entries are skipped with a warning.
-
-### Skill cleanup
-
-The LLM receives all skill records as JSON (id, name, content) and is prompted
-to:
-
-1. Normalize skill names (casing, remove redundant prefixes/suffixes).
-2. Fix formatting (whitespace, heading levels, code block fencing).
-3. Return exactly one output per input skill (1:1, no merging).
-4. Preserve placeholder tokens exactly.
-
-The response is a structured `RefinedSkillsOutput`: one `RefinedSkillRecord`
-per input skill. Unknown IDs in the output are skipped.
 
 ### Fallback
 
@@ -193,6 +193,11 @@ The log includes entries for every pipeline action:
 | `llm_call` | Provider, model, latency, token usage |
 | `warning` | Warning messages from LLM refinement |
 | `egg_packaged` | Final counts for skills, memory, secrets |
+| `apm_passthrough` | APM yml stashed from source files |
+| `a2a_passthrough` | A2A agent card copied from source |
+| `a2a_generated` | A2A agent card generated from egg data |
+| `agents_md_generated` | Per-egg AGENTS.md generated |
+| `specs_embedded` | Spec snapshots embedded in egg |
 
 No secret values or PII appear in the spawn log. Secret entries log only the
 placeholder name and gitleaks rule ID. PII entries log only the entity type

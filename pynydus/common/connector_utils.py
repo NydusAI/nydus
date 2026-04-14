@@ -7,7 +7,12 @@ lightweight parsing used by OpenClaw, ZeroClaw, and Letta connectors.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pynydus.api.schemas import MemoryRecord
 
 
 def split_paragraphs(text: str) -> list[str]:
@@ -54,7 +59,8 @@ def parse_mcp_configs_from_files(files: dict[str, str]) -> dict[str, dict]:
         try:
             data = json.loads(mcp_json)
             if isinstance(data, dict):
-                for name, cfg in data.items():
+                servers = data.get("mcpServers", data)
+                for name, cfg in servers.items():
                     if isinstance(cfg, dict):
                         configs[name] = cfg
         except json.JSONDecodeError:
@@ -123,3 +129,36 @@ def parse_timestamp(val: object) -> datetime | None:
             except ValueError:
                 continue
     return None
+
+
+_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+
+def extract_date_from_filename(name: str) -> datetime | None:
+    """Extract a YYYY-MM-DD date from a filename like ``memory/2026-03-15.md``."""
+    m = _DATE_RE.search(name)
+    if m:
+        try:
+            return datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def date_key_from_record(rec: MemoryRecord) -> str | None:
+    """Extract a YYYY-MM-DD date key from a state record.
+
+    Prefers the record's timestamp field. Falls back to extracting a date
+    from source_store (e.g. ``memory/2026-04-01.md``).
+    """
+    if rec.timestamp:
+        return rec.timestamp.strftime("%Y-%m-%d")
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", rec.source_store)
+    if m:
+        return m.group(1)
+    return None
+
+
+def join_records(records: list[MemoryRecord]) -> str:
+    """Join memory records into a single file's content."""
+    return "\n\n".join(r.text for r in records) + "\n"

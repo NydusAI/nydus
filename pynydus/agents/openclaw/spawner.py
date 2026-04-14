@@ -15,13 +15,16 @@ Parses an OpenClaw workspace directory containing:
 
 from __future__ import annotations
 
-import re
-from datetime import datetime, timezone
+from pathlib import Path
 
+from pynydus.api.protocols import Spawner
 from pynydus.api.raw_types import (
     ParseResult,
     RawMemory,
     RawSkill,
+)
+from pynydus.common.connector_utils import (
+    extract_date_from_filename as _extract_date_from_filename,
 )
 from pynydus.common.connector_utils import (
     parse_mcp_configs_from_files as _parse_mcp_configs_from_files,
@@ -41,7 +44,7 @@ FILE_PATTERNS = ["*.md", "*.yaml", "*.yml", "*.json", "*.txt", "skills/*.md", "m
 """Glob patterns the pipeline uses to read source files from disk."""
 
 
-class OpenClawSpawner:
+class OpenClawSpawner(Spawner):
     """Parse OpenClaw workspace directory."""
 
     FILE_PATTERNS = FILE_PATTERNS
@@ -130,19 +133,6 @@ class OpenClawSpawner:
 # Utility functions
 # ---------------------------------------------------------------------------
 
-
-_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
-
-
-def _extract_date_from_filename(name: str) -> datetime | None:
-    """Extract a YYYY-MM-DD date from a filename like ``memory/2026-03-15.md``."""
-    m = _DATE_RE.search(name)
-    if m:
-        try:
-            return datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            return None
-    return None
 
 
 def _split_markdown_sections(text: str) -> list[dict[str, str]]:

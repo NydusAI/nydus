@@ -3,18 +3,17 @@
 from datetime import UTC, datetime
 
 from pynydus.api.schemas import (
+    AgentSkill,
     Egg,
     Manifest,
     MemoryModule,
     MemoryRecord,
     SecretRecord,
     SecretsModule,
-    SkillRecord,
     SkillsModule,
 )
 from pynydus.common.enums import (
     AgentType,
-    Bucket,
     InjectionMode,
     MemoryLabel,
     SecretKind,
@@ -28,10 +27,9 @@ from pynydus.engine.validator import validate_egg
 
 def _make_manifest(**overrides) -> Manifest:
     defaults = dict(
-        nydus_version="0.1.0",
+        nydus_version="0.0.7",
         created_at=datetime.now(UTC),
         agent_type=AgentType.OPENCLAW,
-        included_modules=[Bucket.SKILL, Bucket.MEMORY, Bucket.SECRET],
     )
     defaults.update(overrides)
     return Manifest(**defaults)
@@ -43,12 +41,12 @@ def _make_egg(**overrides) -> Egg:
     return Egg(**defaults)
 
 
-def _make_skill(id: str = "skill_001") -> SkillRecord:
-    return SkillRecord(
-        id=id,
+def _make_skill(id: str = "skill_001") -> AgentSkill:
+    return AgentSkill(
         name="test_skill",
-        agent_type="markdown_skill",
-        content="Do a thing.",
+        description="",
+        body="Do a thing.",
+        metadata={"id": id, "source_framework": "markdown_skill"},
     )
 
 
@@ -104,18 +102,12 @@ class TestValidEggs:
         errors = [i for i in report.issues if i.level == "error"]
         assert errors == []
 
-    def test_unsigned_egg_warns(self):
+    def test_unsigned_egg_no_signature_noise(self):
+        """Unsigned eggs are normal; validate_egg must not warn on missing signature."""
         egg = _make_egg()
         report = validate_egg(egg)
         assert report.valid is True
-        warnings = [i for i in report.issues if i.level == "warning"]
-        assert any("unsigned" in w.message for w in warnings)
-
-    def test_signed_egg_no_signature_warning(self):
-        egg = _make_egg(manifest=_make_manifest(signature="abc123"))
-        report = validate_egg(egg)
-        warnings = [i for i in report.issues if i.level == "warning"]
-        assert not any("unsigned" in w.message for w in warnings)
+        assert not any("unsigned" in i.message for i in report.issues)
 
     def test_egg_with_populated_modules(self):
         egg = _make_egg(
@@ -149,13 +141,6 @@ class TestManifestValidation:
         assert report.valid is False
         errors = [i for i in report.issues if i.level == "error"]
         assert any("nydus_version" in i.message for i in errors)
-
-    def test_empty_included_modules_warns(self):
-        egg = _make_egg(manifest=_make_manifest(included_modules=[]))
-        report = validate_egg(egg)
-        assert report.valid is True
-        warnings = [i for i in report.issues if i.level == "warning"]
-        assert any("modules" in i.message.lower() for i in warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +292,10 @@ class TestEdgeCases:
 
     def test_report_valid_flag_only_reflects_errors(self):
         """Warnings do NOT make valid=False."""
-        egg = _make_egg(manifest=_make_manifest(included_modules=[]))
+        egg = _make_egg(
+            skills=SkillsModule(skills=[_make_skill("s1")]),
+            memory=MemoryModule(memory=[_make_memory_with_skill_ref("m1", "ghost_skill")]),
+        )
         report = validate_egg(egg)
         assert report.valid is True
         assert len(report.issues) > 0

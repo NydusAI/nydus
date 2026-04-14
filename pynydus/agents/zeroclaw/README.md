@@ -8,11 +8,11 @@
 | `AGENTS.md` / `agents.md` / `instructions.md` / `system_prompt.md` / `HEARTBEAT.md` | `MemoryRecord` (one per paragraph) | `FLOW` |
 | `USER.md` / `user.md` / `context.md` / `TOOLS.md` | `MemoryRecord` (one per paragraph) | `CONTEXT` |
 | `MEMORY.md` / `knowledge.md` / `memory/*.md` | `MemoryRecord` (one per paragraph) | `STATE` |
-| `tools/*.py` | `SkillRecord` | |
-| `tools.json` | `SkillRecord` (fallback if no `tools/*.py`) | |
+| `tools/*.py` | `AgentSkill` | |
+| `tools.json` | `AgentSkill` (fallback if no `tools/*.py`) | |
 | `config.json` | `SecretRecord` (key/secret/token/password/auth values) | |
 | `config.yaml` / `config.yml` | `SecretRecord` (regex-matched credentials) | |
-| `mcp.json` / `mcp/*.json` | `McpServerConfig` | |
+| `mcp.json` | `McpModule` (raw server configs, Claude Desktop format) | |
 
 Raw artifacts: all root `*.md`, `*.yaml`, `*.yml`, `*.json`, `*.txt` files
 plus `tools/*.py`.
@@ -29,8 +29,8 @@ Detection: directory containing a `.zeroclaw` marker, or any persona file
 | `MemoryRecord` (`FLOW`) | `agents.md` | Joined with double newlines |
 | `MemoryRecord` (`CONTEXT`) | `user.md` | Joined with double newlines |
 | `MemoryRecord` (`STATE`) | `knowledge.md` | Joined with double newlines |
-| `SkillRecord` | `tools/<name>.py` | One file per skill |
+| `AgentSkill` | `tools/<name>.py` | One file per skill |
 | `SecretRecord` (`CREDENTIAL`) | `config.json` | `{name: placeholder}` |
-| `McpServerConfig` | `mcp/<name>.json` | One file per server |
+| `McpModule` | `mcp.json` | Claude Desktop format |
 
 The hatcher also creates an empty `.zeroclaw/` marker directory.

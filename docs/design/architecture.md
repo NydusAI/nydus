@@ -26,9 +26,9 @@ Memory[**flow**], Memory[**context**], or Memory[**state**].
 ## Spawn pipeline
 
 
-The spawn pipeline has 9 steps: resolve base egg, read source files, redact
+The spawn pipeline has 10 steps: resolve base egg, read source files, redact
 secrets/PII, parse sources, build records, merge with base egg, LLM refinement,
-post-processing, and package egg.
+post-processing, package egg, and generate standard artifacts.
 
 Step 3 is the **secrets OUT boundary**. After it, no real credentials or PII
 exist anywhere in the pipeline.
@@ -63,8 +63,8 @@ Pydantic schemas for `Egg`, `Manifest`, modules, and record types. Also defines
 ### `agents/`: Platform connectors
 
 Each platform has a **spawner** (`parse(files) -> ParseResult`) and a
-**hatcher** (`render(egg) -> RenderResult`). Connectors are pure functions over
-file dicts with no filesystem access. See {doc}`/design/connectors`.
+**hatcher** (`render(egg, output_dir) -> RenderResult`). Both must subclass the
+`Spawner` / `Hatcher` ABCs from `pynydus.api.protocols`. See {doc}`/design/connectors`.
 
 Each platform directory also contains an `AGENT_SPEC.md` that defines the
 platform's workspace conventions. These specs are loaded at hatch time and
@@ -74,13 +74,14 @@ platform idioms. See {doc}`/guides/llm-refinement`.
 
 ### `engine/`: Core pipelines
 
-- `pipeline.py`: spawn orchestration (Steps 1-9)
+- `pipeline.py`: spawn orchestration (Steps 1-10)
 - `hatcher.py`: hatch orchestration (Steps 1-6)
 - `nydusfile.py`: Nydusfile DSL parser
 - `merger.py`: `FROM` base egg merge operations
 - `refinement.py`: LLM refinement (spawn Step 7 + hatch Step 3)
 - `packager.py`: `.egg` ZIP I/O
 - `validator.py`: structural egg validation
+- `standards/`: per-standard modules (MCP, skills, A2A, APM, AGENTS.md)
 - `differ.py`: egg-to-egg diff
 
 
@@ -121,5 +122,6 @@ polish. Strict ordering enforced by pipeline.
 one set of file patterns. Multi-source via `FROM` merging.
 
 
-**Connectors are file-dict pure.** Spawners/hatchers take `dict[str, str]` and
-return structured results. No filesystem access = trivially testable.
+**Connectors are structured I/O.** Spawners take `dict[str, str]` and return
+`ParseResult`. Hatchers take an `Egg` plus output directory and return
+`RenderResult`. Both subclass ABCs defined in `pynydus.api.protocols`.

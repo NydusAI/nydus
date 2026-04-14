@@ -159,7 +159,7 @@ def test_portability(source_type: AgentType, target_type: AgentType, tmp_path: P
     assert loaded.skills.skills or loaded.memory.memory, "Egg should not be empty"
 
     for skill in loaded.skills.skills:
-        assert skill.content, f"Skill {skill.name} has empty content"
+            assert skill.body, f"Skill {skill.name} has empty body"
     for mem in loaded.memory.memory:
         assert mem.text, f"Memory {mem.id} has empty text"
 

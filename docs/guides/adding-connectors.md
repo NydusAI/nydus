@@ -8,8 +8,8 @@ requires implementing a small interface and a platform specification.
 
 Nydus separates source reading (spawners) from target rendering (hatchers):
 
-- **Spawners** are target-agnostic: `parse(files) -> ParseResult`
-- **Hatchers** are target-specific: `render(egg) -> RenderResult`
+- **Spawners** are target-agnostic: `parse(files) -> ParseResult` (subclass `Spawner` ABC)
+- **Hatchers** are target-specific: `render(egg, output_dir) -> RenderResult` (subclass `Hatcher` ABC)
 
 
 ```text
@@ -31,42 +31,31 @@ agents/
 ## Adding a new source
 
 
-Create `pynydus/agents/slack/spawner.py` with `detect()`, `parse()`,
-`validate()`, and `FILE_PATTERNS`:
+Create `pynydus/agents/slack/spawner.py` subclassing `Spawner`:
 
 ```python
-from pathlib import Path
+from pynydus.api.protocols import Spawner
 from pynydus.api.raw_types import ParseResult, RawMemory, RawSkill
-from pynydus.api.schemas import ValidationIssue, ValidationReport
 from pynydus.common.enums import MemoryLabel
 
 
-class SlackSpawner:
+class SlackSpawner(Spawner):
     """Parse Slack export archives."""
-
-    FILE_PATTERNS = ["channels.json", "*.json"]
-
-    def detect(self, input_path: Path) -> bool:
-        return (input_path / "channels.json").exists()
 
     def parse(self, files: dict[str, str]) -> ParseResult:
         """Receives pre-redacted file contents. Never sees real secrets."""
-        skills = []
-        memories = []
-        # ... parsing logic ...
-        return ParseResult(skills=skills, memory=memories)
+        skills: list[RawSkill] = []
+        memories: list[RawMemory] = []
+        mcp_configs: dict[str, dict] = {}
 
-    def validate(self, input_path: Path) -> ValidationReport:
-        issues = []
-        if not (input_path / "channels.json").exists():
-            issues.append(ValidationIssue(
-                level="error",
-                message="Missing channels.json",
-                location=str(input_path),
-            ))
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues),
-            issues=issues,
+        # Parse channels.json, messages, etc.
+        # ...
+
+        return ParseResult(
+            skills=skills,
+            memory=memories,
+            mcp_configs=mcp_configs,
+            agent_name="my-slack-agent",
         )
 ```
 
@@ -84,34 +73,33 @@ The new source is immediately available for all targets.
 ## Adding a new target
 
 
-Create `pynydus/agents/newtarget/hatcher.py`:
+Create `pynydus/agents/newtarget/hatcher.py` subclassing `Hatcher`:
 
 ```python
+from pathlib import Path
+
+from pynydus.api.protocols import Hatcher
 from pynydus.api.raw_types import RenderResult
-from pynydus.api.schemas import Egg, ValidationIssue, ValidationReport
+from pynydus.api.schemas import Egg
 
 
-class NewTargetHatcher:
-    def render(self, egg: Egg) -> RenderResult:
+class NewTargetHatcher(Hatcher):
+    def render(self, egg: Egg, output_dir: Path) -> RenderResult:
         """Returns dict of filename -> content with placeholders intact."""
-        files = {}
+        files: dict[str, str] = {}
         for skill in egg.skills.skills:
             pass  # convert to target format
         for mem in egg.memory.memory:
             pass  # convert to target format
-        return RenderResult(files=files)
 
-    def validate(self, egg: Egg) -> ValidationReport:
-        issues = []
-        if not egg.skills.skills:
-            issues.append(ValidationIssue(
-                level="warning",
-                message="No skills. Agent will have no capabilities",
-            ))
-        return ValidationReport(
-            valid=not any(i.level == "error" for i in issues),
-            issues=issues,
-        )
+        # MCP configs (Claude Desktop format)
+        if egg.mcp.configs:
+            import json
+            files["mcp.json"] = json.dumps(
+                {"mcpServers": egg.mcp.configs}, indent=2
+            )
+
+        return RenderResult(files=files)
 ```
 
 
@@ -144,6 +132,11 @@ See the existing `AGENT_SPEC.md` files in `pynydus/agents/openclaw/`,
 ## Key types
 
 
+**Protocols** (`pynydus.api.protocols`):
+- {py:class}`~pynydus.api.protocols.Spawner`: ABC — implement `parse(files) -> ParseResult`
+- {py:class}`~pynydus.api.protocols.Hatcher`: ABC — implement `render(egg, output_dir) -> RenderResult`
+
+
 **Spawner types** (`pynydus.api.raw_types`):
 - {py:class}`~pynydus.api.raw_types.ParseResult`: output from `parse()`
 - {py:class}`~pynydus.api.raw_types.RawSkill`: one skill (name + content)
@@ -153,4 +146,4 @@ See the existing `AGENT_SPEC.md` files in `pynydus/agents/openclaw/`,
 **Hatcher types**:
 - {py:class}`~pynydus.api.raw_types.RenderResult`: output from `render()`
 - {py:class}`~pynydus.api.schemas.Egg`: the full Egg
-- {py:class}`~pynydus.api.schemas.SkillRecord`, {py:class}`~pynydus.api.schemas.MemoryRecord`, {py:class}`~pynydus.api.schemas.SecretRecord`
+- {py:class}`~pynydus.api.skill_format.AgentSkill`, {py:class}`~pynydus.api.schemas.MemoryRecord`, {py:class}`~pynydus.api.schemas.SecretRecord`
