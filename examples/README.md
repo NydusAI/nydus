@@ -5,8 +5,10 @@
 | 01-redact-travel-agent | REDACT (gitleaks + Presidio) | gitleaks, spaCy model | Yes |
 | 02-add-company-chatbot | FROM + ADD | None | Yes |
 | 03-llm-refinement-compress | LLM refinement | OpenAI API key | Reproducible, not identical |
+| 04-pull-registry-stress | Registry pull stress test | Nest account | Yes |
 
-All examples use **OpenClaw → OpenClaw** (same platform, no cross-platform hatch).
+Examples 01–03 use **OpenClaw → OpenClaw** (same platform, no cross-platform hatch).
+Example 04 tests the Nest registry directly (no spawn/hatch).
 
 ## Quick start
 
