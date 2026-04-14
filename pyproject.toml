@@ -1,6 +1,6 @@
 [project]
 name = "pynydus"
-version = "0.0.7"
+version = "0.0.8"
 description = "Portable state transport for AI agents"
 readme = "README.md"
 authors = [
@@ -41,7 +41,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "pytest-dotenv>=0.5.2",
-    "ruff>=0.9",
+    "ruff>=0.15.8,<0.16",
 ]
 docs = [
     "sphinx>=7.0",

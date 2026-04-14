@@ -192,9 +192,7 @@ def _substitute_secrets(files: dict[str, str], placeholder_map: dict[str, str]) 
 # ---------------------------------------------------------------------------
 
 
-def _write_standard_artifacts(
-    egg: Egg, output_dir: Path, hatch_log: list[dict]
-) -> list[str]:
+def _write_standard_artifacts(egg: Egg, output_dir: Path, hatch_log: list[dict]) -> list[str]:
     """Write egg-level standard artifacts to the output root."""
     output_dir.mkdir(parents=True, exist_ok=True)
     created: list[str] = []
@@ -215,9 +213,7 @@ def _write_standard_artifacts(
 
     if egg.mcp.configs:
         mcp_doc = {"mcpServers": dict(egg.mcp.configs)}
-        (output_dir / "mcp.json").write_text(
-            json.dumps(mcp_doc, indent=2) + "\n", encoding="utf-8"
-        )
+        (output_dir / "mcp.json").write_text(json.dumps(mcp_doc, indent=2) + "\n", encoding="utf-8")
         created.append("mcp.json")
 
     if created:

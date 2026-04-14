@@ -2167,7 +2167,7 @@ wheels = [
 
 [[package]]
 name = "pynydus"
-version = "0.0.7"
+version = "0.0.8"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -2220,7 +2220,7 @@ dev = [
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "pytest-dotenv", specifier = ">=0.5.2" },
-    { name = "ruff", specifier = ">=0.9" },
+    { name = "ruff", specifier = ">=0.15.8,<0.16" },
 ]
 docs = [
     { name = "furo", specifier = ">=2024.0" },

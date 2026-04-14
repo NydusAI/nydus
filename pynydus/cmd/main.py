@@ -24,7 +24,9 @@ app = typer.Typer(
 def _print_llm_status(llm_config) -> None:  # noqa: ANN001
     """Print LLM refinement status at the start of a pipeline command."""
     if llm_config is not None:
-        rprint(f"  [green]LLM refinement: enabled ({llm_config.provider}/{llm_config.model})[/green]")
+        rprint(
+            f"  [green]LLM refinement: enabled ({llm_config.provider}/{llm_config.model})[/green]"
+        )
     else:
         rprint(
             "  [dim]LLM refinement: disabled "
@@ -747,7 +749,9 @@ def keygen(
 def push(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
     name: Annotated[str, typer.Option("-n", "--name", help="Registry name (user/egg-name)")] = ...,  # type: ignore[assignment]
-    version: Annotated[str, typer.Option("-v", "--version", help="Version string (e.g. 0.1.0)")] = ...,  # type: ignore[assignment]
+    version: Annotated[
+        str, typer.Option("-v", "--version", help="Version string (e.g. 0.1.0)")
+    ] = ...,  # type: ignore[assignment]
     author: Annotated[str | None, typer.Option("-a", "--author", help="Author name")] = None,
 ) -> None:
     """Publish an Egg to the Nest registry.

@@ -87,9 +87,7 @@ class TestRebuildLayout:
 
     def test_no_uppercase_filenames(self):
         md_files = [
-            f
-            for f in self.result.files_created
-            if f.endswith(".md") and f.startswith("agent/")
+            f for f in self.result.files_created if f.endswith(".md") and f.startswith("agent/")
         ]
         for f in md_files:
             basename = f.split("/")[-1]
