@@ -169,7 +169,7 @@ whose `source_store` matches the glob pattern. Labels must be one of
 ### EXCLUDE
 
 `EXCLUDE <label>` directives drop all memory records with the given label.
-Source files are still preserved in `raw/`. Only structured memory records
+Source files are still preserved in the archive's `raw/` snapshot. Only structured memory records
 are removed.
 
 **Log entry:** `memory_excluded` (excluded labels, dropped record details,

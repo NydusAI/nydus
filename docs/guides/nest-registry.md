@@ -64,7 +64,7 @@ server. Local paths (e.g. `FROM ./base.egg`) resolve relative to the
 Nydusfile directory.
 
 The `0.3.0` style tag in examples is illustrative. Published versions depend on
-your registry. Sample sources in this repository live under `pynydus/eggs/base/`
+your registry. Sample sources in this repository live under `eggs/base/`
 (see {doc}`/guides/nydusfile`).
 
 ## SDK usage

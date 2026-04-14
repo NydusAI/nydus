@@ -1,4 +1,4 @@
-"""Hatching pipeline: transforms an Egg into a target runtime. Spec §13.
+"""Hatching pipeline: transforms an Egg into a target runtime. Spec 13.
 
 Two modes:
   rebuild (default): render from structured egg modules via connector
@@ -9,8 +9,9 @@ Pipeline steps:
     2. Build file dict: connector.render() (rebuild) or raw snapshot (passthrough)
     3. LLM polish: adapt/polish on placeholder'd content (no real secrets)
     4. Secrets IN: substitute {{SECRET_NNN}} / {{PII_NNN}} with real values
-    5. Write to disk
-    6. Hatch log: write hatch_log.json
+    5. Write connector (agent) files to output/agent/
+    6. Write standard artifacts (AGENTS.md, agent-card.json, apm.yml, mcp.json) to output root
+    7. Hatch log: write hatch_log.json to output/logs/
 
 The LLM never sees real secrets: only placeholder tokens. Real values are
 injected as the last transformation before writing to disk.
@@ -49,7 +50,7 @@ def hatch(
     Args:
         egg: Egg to hatch (typically from :func:`~pynydus.engine.packager.load`).
         target: Destination runtime (``openclaw``, ``zeroclaw``, ``letta``).
-        output_dir: Directory for output files. default ``./agent``.
+        output_dir: Directory for output files. default ``./[target]/``.
         secrets_path: ``.env`` file for placeholder substitution (secrets IN).
         mode: ``rebuild`` (structured ``render()``) or ``passthrough`` (raw snapshot).
         llm_config: Optional LLM tier for refinement (spawn and hatch).
@@ -62,7 +63,7 @@ def hatch(
     Returns:
         ``HatchResult`` with output path, files written, warnings, and hatch log.
     """
-    output = output_dir or Path("./agent")
+    output = output_dir or Path(f"./{target.value}")
     hatch_log: list[dict] = []
     warnings: list[str] = []
 
@@ -146,13 +147,14 @@ def hatch(
                     }
                 )
 
-    # --- Step 4b: Passthrough apm.yml if present ---
-    if egg.apm_yml:
-        file_dict["apm.yml"] = egg.apm_yml
-        hatch_log.append({"type": "apm_passthrough"})
+    # --- Step 5: Write connector (agent) files to output/agent/ ---
+    agent_dir = output / "agent"
+    agent_files = _write_files(file_dict, agent_dir)
+    files_created = [f"agent/{f}" for f in agent_files]
 
-    # --- Step 5: Write to disk ---
-    files_created = _write_files(file_dict, output)
+    # --- Step 6: Write standard artifacts to output root ---
+    std_files = _write_standard_artifacts(egg, output, hatch_log)
+    files_created.extend(std_files)
 
     result = HatchResult(
         target=target,
@@ -162,7 +164,7 @@ def hatch(
         hatch_log=hatch_log,
     )
 
-    # --- Step 6: Hatch log ---
+    # --- Step 7: Hatch log ---
     _write_hatch_log(result)
 
     return result
@@ -186,8 +188,42 @@ def _substitute_secrets(files: dict[str, str], placeholder_map: dict[str, str]) 
 
 
 # ---------------------------------------------------------------------------
-# Step 5 helpers: Write files to disk
+# Step 5/6 helpers: Write files to disk
 # ---------------------------------------------------------------------------
+
+
+def _write_standard_artifacts(
+    egg: Egg, output_dir: Path, hatch_log: list[dict]
+) -> list[str]:
+    """Write egg-level standard artifacts to the output root."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    created: list[str] = []
+
+    if egg.agents_md:
+        (output_dir / "AGENTS.md").write_text(egg.agents_md, encoding="utf-8")
+        created.append("AGENTS.md")
+
+    if egg.a2a_card:
+        (output_dir / "agent-card.json").write_text(
+            json.dumps(egg.a2a_card, indent=2) + "\n", encoding="utf-8"
+        )
+        created.append("agent-card.json")
+
+    if egg.apm_yml:
+        (output_dir / "apm.yml").write_text(egg.apm_yml, encoding="utf-8")
+        created.append("apm.yml")
+
+    if egg.mcp.configs:
+        mcp_doc = {"mcpServers": dict(egg.mcp.configs)}
+        (output_dir / "mcp.json").write_text(
+            json.dumps(mcp_doc, indent=2) + "\n", encoding="utf-8"
+        )
+        created.append("mcp.json")
+
+    if created:
+        hatch_log.append({"type": "standards_written", "files": created})
+
+    return created
 
 
 def _write_files(files: dict[str, str], output_dir: Path) -> list[str]:
@@ -203,7 +239,7 @@ def _write_files(files: dict[str, str], output_dir: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Step 6 helpers: Hatch log
+# Step 7 helpers: Hatch log
 # ---------------------------------------------------------------------------
 
 

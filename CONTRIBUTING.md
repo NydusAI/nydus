@@ -87,8 +87,7 @@ Rules: `E`, `F`, `I`, `UP` (pyflakes, pycodestyle, isort, pyupgrade). Line lengt
 
 Conventions for docstrings, comments, and typography are in
 [docs/guides/code-style.md](docs/guides/code-style.md) (also
-**Guides → Code Style** on Read the Docs). CI runs Ruff only; see
-[docs/guides/code-quality.md](docs/guides/code-quality.md).
+**Guides → Code Style** on Read the Docs).
 
 Optional local files you do not push can live under **`.internal/`** (gitignored),
 for example **`COMMENT_RULES.md`** or **`NEW_AGENTS.md`** if you keep personal copies there.
@@ -109,7 +108,7 @@ See `docs/guides/adding-connectors.md` for the full connector architecture guide
 
 ## Building base eggs
 
-Base egg source definitions live in `pynydus/eggs/base/<agent>/<version>/`. Each directory contains a `Nydusfile` and the agent source files.
+Base egg source definitions live in `eggs/base/<agent>/<version>/`. Each directory contains a `Nydusfile` and the agent source files.
 
 From that directory, build `./base.egg` (gitignored) using either:
 

@@ -18,6 +18,9 @@ Source files  →  Redaction  →  Spawner  →  Egg  →  Hatcher  →  Secret 
 
 - **Hatcher** receives the full Egg and produces target files with placeholders
   still intact. The pipeline handles secret injection as the final step.
+  Hatcher output is written to the `agent/` subdirectory inside the output
+  directory. Standard artifacts (`AGENTS.md`, `agent-card.json`, `apm.yml`,
+  `mcp.json`) are written to the output root by the engine, not the connector.
 
 ## Egg contents
 

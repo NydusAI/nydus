@@ -85,7 +85,7 @@ The hatch LLM prompt is assembled from five components:
 3. **Redaction placeholders**: a listing of all secret/PII placeholders in the
    Egg with their kind and description.
 
-4. **Original source files**: the redacted `raw/` snapshot, so the LLM can
+4. **Original source files**: the egg's redacted `raw/` snapshot, so the LLM can
    compare against the mechanically reconstructed output.
 
 5. **Reconstructed files**: the file dict from the connector, formatted as

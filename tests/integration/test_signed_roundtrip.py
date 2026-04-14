@@ -49,8 +49,8 @@ def test_signed_roundtrip(openclaw_src: Path, tmp_path: Path):
 
     out_dir = tmp_path / "hatched"
     result = hatch(loaded, target=AgentType.OPENCLAW, output_dir=out_dir)
-    assert "SOUL.md" in result.files_created
-    assert any(f.startswith("skills/") for f in result.files_created)
+    assert "agent/SOUL.md" in result.files_created
+    assert any(f.startswith("agent/skills/") for f in result.files_created)
 
 
 def test_tampered_fails(openclaw_src: Path, tmp_path: Path):

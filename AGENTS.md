@@ -62,6 +62,30 @@ tests/
   integration/    # Full pipeline tests
 ```
 
+## Hatch output structure
+
+Hatching produces a structured output directory. Standard artifacts live at
+the root; platform-specific runtime files go in `agent/`:
+
+```
+<output_dir>/
+  AGENTS.md            # deployment runbook (egg-level)
+  agent-card.json      # A2A card
+  apm.yml              # APM manifest
+  mcp.json             # MCP configs (Claude Desktop format)
+  agent/               # platform-specific runtime files
+    SOUL.md            # (OpenClaw example)
+    AGENTS.md          # flow memory (different from root AGENTS.md)
+    skills/
+    mcp.json           # connector-produced MCP config
+    config.json
+  logs/
+    hatch_log.json
+```
+
+This separation is enforced by `engine/hatcher.py` Step 5 (connector files
+to `agent/`) and Step 6 (`_write_standard_artifacts` to root).
+
 ## Conventions
 
 - All data models are Pydantic v2 (`BaseModel`).
@@ -72,6 +96,7 @@ tests/
 - Secret placeholders: `{{SECRET_NNN}}` for credentials, `{{PII_NNN}}` for PII.
 - Every spawner subclasses `Spawner` ABC; every hatcher subclasses `Hatcher` ABC.
 - Version: `__version__` in `pynydus/__init__.py`. Egg spec version: `EGG_SPEC_VERSION`.
+- CLI options all have short aliases (e.g. `-t`/`--target`, `-s`/`--secrets`).
 
 ## Boundaries
 

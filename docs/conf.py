@@ -24,8 +24,7 @@ extensions = [
 
 autodoc2_packages = ["../pynydus"]
 autodoc2_render_plugin = "myst"
-# Sample agent trees under pynydus/eggs/base are not library API
-autodoc2_skip_module_regexes = [r"pynydus\.eggs\."]
+autodoc2_skip_module_regexes = []
 
 myst_enable_extensions = [
     "colon_fence",

@@ -41,13 +41,17 @@ See {doc}`/design/spawn-pipeline` for the step-by-step deep dive.
 ## Hatch pipeline
 
 
-The hatch pipeline has 6 steps: version check, build file dict, LLM polish,
-secrets IN, write to disk, and hatch log.
+The hatch pipeline has 7 steps: version check, build file dict, LLM polish,
+secrets IN, write agent files to `agent/`, write standard artifacts to root,
+and hatch log.
 
 Step 4 is the **secrets IN boundary**, the last transformation before disk.
+Step 6 writes deployment-level standards (`AGENTS.md`, `agent-card.json`,
+`apm.yml`, `mcp.json`) to the output root, separate from platform files.
 
 Two modes: **rebuild** (default, generates from structured modules) and
-**passthrough** (replays redacted `raw/` verbatim, requires target = source).
+**passthrough** (replays the egg's redacted `raw/` snapshot verbatim,
+requires target = source).
 
 See {doc}`/design/hatch-pipeline` for the step-by-step deep dive.
 
@@ -75,7 +79,7 @@ platform idioms. See {doc}`/guides/llm-refinement`.
 ### `engine/`: Core pipelines
 
 - `pipeline.py`: spawn orchestration (Steps 1-10)
-- `hatcher.py`: hatch orchestration (Steps 1-6)
+- `hatcher.py`: hatch orchestration (Steps 1-7)
 - `nydusfile.py`: Nydusfile DSL parser
 - `merger.py`: `FROM` base egg merge operations
 - `refinement.py`: LLM refinement (spawn Step 7 + hatch Step 3)
@@ -105,8 +109,9 @@ Typer-based CLI. Each command delegates to the SDK or engine.
 
 
 **Egg as interchange format.** Structured modules (skills, memory, secrets) are
-separated from the raw snapshot (`raw/`). This enables rebuild (cross-platform)
-and passthrough (same-platform) hatch modes.
+separated from the redacted source snapshot (the `raw/` directory inside the
+archive). This enables rebuild (cross-platform) and passthrough (same-platform)
+hatch modes.
 
 
 **Placeholder linking.** Every redacted value gets a unique token tracked with

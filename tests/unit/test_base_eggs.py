@@ -17,7 +17,6 @@ class TestBaseEggGeneration:
     def openclaw_base(self) -> Path:
         path = (
             Path(__file__).resolve().parent.parent.parent
-            / "pynydus"
             / "eggs"
             / "base"
             / "openclaw"
@@ -27,7 +26,24 @@ class TestBaseEggGeneration:
         if not path.exists():
             pytest.skip(
                 "openclaw base.egg not built yet "
-                "(from pynydus/eggs/base/openclaw/0.0.1 "
+                "(from eggs/base/openclaw/0.0.1 "
+                "run ./spawn.sh or: uv run nydus spawn -o ./base.egg)"
+            )
+        return path
+
+    @pytest.fixture
+    def zeroclaw_base(self) -> Path:
+        path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "eggs"
+            / "base"
+            / "zeroclaw"
+            / "0.0.1"
+            / "base.egg"
+        )
+        if not path.exists():
+            pytest.skip(
+                "zeroclaw base.egg not built yet (from eggs/base/zeroclaw/0.0.1 "
                 "run ./spawn.sh or: uv run nydus spawn -o ./base.egg)"
             )
         return path
@@ -36,7 +52,6 @@ class TestBaseEggGeneration:
     def letta_base(self) -> Path:
         path = (
             Path(__file__).resolve().parent.parent.parent
-            / "pynydus"
             / "eggs"
             / "base"
             / "letta"
@@ -45,7 +60,7 @@ class TestBaseEggGeneration:
         )
         if not path.exists():
             pytest.skip(
-                "letta base.egg not built yet (from pynydus/eggs/base/letta/0.0.1 run ./spawn.sh "
+                "letta base.egg not built yet (from eggs/base/letta/0.0.1 run ./spawn.sh "
                 "or: uv run nydus spawn -o ./base.egg)"
             )
         return path
@@ -53,28 +68,44 @@ class TestBaseEggGeneration:
     def test_openclaw_base_egg(self, openclaw_base: Path):
         egg = load(openclaw_base)
         assert egg.manifest.agent_type == AgentType.OPENCLAW
+        assert len(egg.skills.skills) >= 2
+        labels = {m.label for m in egg.memory.memory}
+        assert MemoryLabel.PERSONA in labels
+        assert MemoryLabel.FLOW in labels
+        assert MemoryLabel.CONTEXT in labels
+        assert len(egg.mcp.configs) >= 2
+        assert egg.apm_yml is not None
+        assert egg.a2a_card is not None
+        assert egg.agents_md is not None
+
+    def test_zeroclaw_base_egg(self, zeroclaw_base: Path):
+        egg = load(zeroclaw_base)
+        assert egg.manifest.agent_type == AgentType.ZEROCLAW
+        assert egg.manifest.agent_name == "nydus-zeroclaw-base"
+        assert egg.manifest.llm_model == "claude-3-5-sonnet"
+        labels = {m.label for m in egg.memory.memory}
+        assert MemoryLabel.PERSONA in labels
+        assert MemoryLabel.FLOW in labels
+        assert MemoryLabel.CONTEXT in labels
         assert len(egg.skills.skills) >= 1
-        assert len(egg.memory.memory) >= 1
-        assert egg.memory.memory[0].label == MemoryLabel.PERSONA
-        secret_names = {s.name for s in egg.secrets.secrets}
-        if secret_names:
-            assert "OPENAI_API_KEY" in secret_names
-        else:
-            assert "OPENAI_API_KEY" in egg.raw_artifacts.get("config.json", "")
+        assert len(egg.mcp.configs) >= 2
+        assert egg.apm_yml is not None
+        assert egg.a2a_card is not None
+        assert egg.agents_md is not None
 
     def test_letta_base_egg(self, letta_base: Path):
         egg = load(letta_base)
         assert egg.manifest.agent_type == AgentType.LETTA
+        assert egg.manifest.agent_name == "nydus-letta-base"
+        assert egg.manifest.llm_model == "gpt-4o"
         assert len(egg.memory.memory) >= 3
         labels = {m.label for m in egg.memory.memory}
         assert MemoryLabel.PERSONA in labels
         assert MemoryLabel.CONTEXT in labels
         assert MemoryLabel.FLOW in labels
-        names = {s.name for s in egg.secrets.secrets}
-        if names:
-            assert "OPENAI_API_KEY" in names
-            assert "LETTA_SERVER_URL" in names
-        else:
-            state = egg.raw_artifacts.get("agent_state.json", "")
-            assert "OPENAI_API_KEY" in state
-            assert "LETTA_SERVER_URL" in state
+        assert MemoryLabel.STATE in labels
+        assert len(egg.skills.skills) >= 1
+        assert len(egg.mcp.configs) >= 2
+        assert egg.apm_yml is not None
+        assert egg.a2a_card is not None
+        assert egg.agents_md is not None

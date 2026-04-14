@@ -34,50 +34,51 @@ class TestRebuildLayout:
         self.out = out
 
     def test_soul_present(self):
-        assert "SOUL.md" in self.result.files_created
-        content = (self.out / "SOUL.md").read_text()
+        assert "agent/SOUL.md" in self.result.files_created
+        content = (self.out / "agent" / "SOUL.md").read_text()
         assert "no filler" in content
 
     def test_identity_present(self):
-        assert "IDENTITY.md" in self.result.files_created
-        content = (self.out / "IDENTITY.md").read_text()
+        assert "agent/IDENTITY.md" in self.result.files_created
+        content = (self.out / "agent" / "IDENTITY.md").read_text()
         assert "Voyager" in content
 
     def test_agents_present(self):
         assert "AGENTS.md" in self.result.files_created
-        content = (self.out / "AGENTS.md").read_text()
+        assert "agent/AGENTS.md" in self.result.files_created
+        content = (self.out / "agent" / "AGENTS.md").read_text()
         assert "Protocol" in content
 
     def test_user_present(self):
-        assert "USER.md" in self.result.files_created
-        content = (self.out / "USER.md").read_text()
+        assert "agent/USER.md" in self.result.files_created
+        content = (self.out / "agent" / "USER.md").read_text()
         assert "window seat" in content
 
     def test_tools_present(self):
-        assert "TOOLS.md" in self.result.files_created
-        content = (self.out / "TOOLS.md").read_text()
+        assert "agent/TOOLS.md" in self.result.files_created
+        content = (self.out / "agent" / "TOOLS.md").read_text()
         assert "Flight search" in content
 
     def test_memory_undated(self):
-        assert "MEMORY.md" in self.result.files_created
-        content = (self.out / "MEMORY.md").read_text()
+        assert "agent/MEMORY.md" in self.result.files_created
+        content = (self.out / "agent" / "MEMORY.md").read_text()
         assert "gold plus" in content
 
     def test_memory_dated_files(self):
-        assert "memory/2026-04-01.md" in self.result.files_created
-        assert "memory/2026-04-03.md" in self.result.files_created
-        assert "nonstop" in (self.out / "memory" / "2026-04-01.md").read_text()
-        assert "confirmation" in (self.out / "memory" / "2026-04-03.md").read_text()
+        assert "agent/memory/2026-04-01.md" in self.result.files_created
+        assert "agent/memory/2026-04-03.md" in self.result.files_created
+        assert "nonstop" in (self.out / "agent" / "memory" / "2026-04-01.md").read_text()
+        assert "confirmation" in (self.out / "agent" / "memory" / "2026-04-03.md").read_text()
 
     def test_skills_directory(self):
-        skill_files = [f for f in self.result.files_created if f.startswith("skills/")]
+        skill_files = [f for f in self.result.files_created if f.startswith("agent/skills/")]
         assert len(skill_files) == 2
-        assert "skills/book-flight.md" in self.result.files_created
-        assert "skills/search-hotels.md" in self.result.files_created
+        assert "agent/skills/book-flight.md" in self.result.files_created
+        assert "agent/skills/search-hotels.md" in self.result.files_created
 
     def test_skill_content(self):
-        assert "origin" in (self.out / "skills" / "book-flight.md").read_text()
-        assert "hotels" in (self.out / "skills" / "search-hotels.md").read_text()
+        assert "origin" in (self.out / "agent" / "skills" / "book-flight.md").read_text()
+        assert "hotels" in (self.out / "agent" / "skills" / "search-hotels.md").read_text()
 
     def test_no_legacy_files(self):
         for bad in ("soul.md", "agents.md", "user.md", "knowledge.md", "skill.md"):
@@ -119,10 +120,10 @@ class TestConfigJsonRoundTrip:
         self.out = out
 
     def test_config_json_present(self):
-        assert "config.json" in self.result.files_created
+        assert "agent/config.json" in self.result.files_created
 
     def test_config_json_has_placeholder(self):
-        content = (self.out / "config.json").read_text()
+        content = (self.out / "agent" / "config.json").read_text()
         parsed = json.loads(content)
         values = list(parsed.values())
         assert any(v.startswith("{{SECRET_") for v in values), (
@@ -130,5 +131,5 @@ class TestConfigJsonRoundTrip:
         )
 
     def test_config_json_no_raw_key(self):
-        content = (self.out / "config.json").read_text()
+        content = (self.out / "agent" / "config.json").read_text()
         assert "sk-proj-" not in content, "Raw API key must not appear in hatched config.json"

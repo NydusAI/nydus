@@ -1,9 +1,7 @@
 # Code Style
 
-Rules for docstrings and in-function comments in the `pynydus/` tree. Humans and
-automation should follow these conventions.
-
-For **formatting and lint** (Ruff, `make check`), see {doc}`/guides/code-quality`.
+Rules for docstrings, comments, formatting, and lint in the `pynydus/` tree.
+Humans and automation should follow these conventions.
 
 ## Typography
 
@@ -161,8 +159,8 @@ url = url.rstrip("/")  # Strip trailing slash for clean URL joining
 
 ### Step comments in pipelines
 
-When a function implements a numbered pipeline (spawn steps 1-9, hatch
-steps 1-6), use step-header comments to mark boundaries. These are
+When a function implements a numbered pipeline (spawn steps 1-10, hatch
+steps 1-7), use step-header comments to mark boundaries. These are
 **structural**, not narrating. Keep them short and match the documented
 step names:
 
@@ -204,3 +202,32 @@ a separator for a single function.
   one-line summary.
 - Prefer **step headers** and short **why** comments at security boundaries.
   Avoid comments that only restate the next line of code.
+
+## Formatting and lint
+
+Local CI-style checks live in the repository root (the `nydus/` directory
+that contains `Makefile`, `pynydus/`, and `tests/`).
+
+### `make check`
+
+Runs **Ruff** format check and lint on `pynydus/` and `tests/`. There are
+no writes. Use `make fmt` to auto-format and apply safe Ruff fixes.
+
+### Ruff
+
+Rules: `E`, `F`, `I`, `UP` (pyflakes, pycodestyle, isort, pyupgrade). Line
+length: 100. Target: Python 3.10.
+
+Run manually:
+
+```bash
+uv run ruff format --check pynydus tests
+uv run ruff check pynydus tests
+```
+
+## Local-only files
+
+Optional notes, scratch scripts, and other files you do not intend to push
+can live under **`.internal/`** at the repository root. A tracked
+**`.internal/.gitkeep`** keeps that folder in the tree; everything else
+under `.internal/` is ignored via `.gitignore`.

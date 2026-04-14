@@ -34,8 +34,8 @@ class TestRebuildMode:
 
         egg = make_egg()
         result = hatch(egg, target=AgentType.OPENCLAW, output_dir=tmp_path / "out")
-        assert "SOUL.md" in result.files_created
-        assert (tmp_path / "out" / "SOUL.md").read_text() == "original content\n"
+        assert "agent/SOUL.md" in result.files_created
+        assert (tmp_path / "out" / "agent" / "SOUL.md").read_text() == "original content\n"
 
 
 class TestPassthroughMode:
@@ -51,7 +51,7 @@ class TestPassthroughMode:
             mode=HatchMode.PASSTHROUGH,
             raw_artifacts=raw,
         )
-        assert (tmp_path / "out" / "SOUL.md").read_text() == "raw content"
+        assert (tmp_path / "out" / "agent" / "SOUL.md").read_text() == "raw content"
 
     def test_mismatch_rejected(self, tmp_path: Path):
         from pynydus.engine.hatcher import hatch
@@ -105,7 +105,7 @@ class TestSecretInjection:
 
         out = tmp_path / "out"
         hatch(egg, target=AgentType.OPENCLAW, output_dir=out, secrets_path=env_file)
-        config_content = (out / "config.json").read_text()
+        config_content = (out / "agent" / "config.json").read_text()
         assert "real-value" in config_content
         assert "{{SECRET_001}}" not in config_content
 
@@ -124,7 +124,7 @@ class TestLLMRefinementHatch:
         egg = make_egg()
         out = tmp_path / "out"
         hatch(egg, target=AgentType.OPENCLAW, output_dir=out, llm_config=tier)
-        assert "refined content" in (out / "SOUL.md").read_text()
+        assert "refined content" in (out / "agent" / "SOUL.md").read_text()
 
     def test_without_llm(self, _mock_render, tmp_path: Path):
         from pynydus.engine.hatcher import hatch
@@ -132,7 +132,7 @@ class TestLLMRefinementHatch:
         egg = make_egg()
         out = tmp_path / "out"
         hatch(egg, target=AgentType.OPENCLAW, output_dir=out)
-        assert "original content" in (out / "SOUL.md").read_text()
+        assert "original content" in (out / "agent" / "SOUL.md").read_text()
 
 
 class TestHatchLog:

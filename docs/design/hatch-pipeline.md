@@ -16,9 +16,9 @@ files from the Egg's structured modules (skills, memory, secrets). This works
 for both same-platform and cross-platform hatching. The output follows the
 target platform's canonical layout.
 
-**Passthrough** (`--passthrough`): The redacted `raw/` snapshot from the Egg
-archive is replayed verbatim. No connector render step runs. Requires the
-target type to match the source type and `raw/` to be non-empty. Useful when
+**Passthrough** (`--passthrough`): The egg's redacted `raw/` snapshot is
+replayed verbatim. No connector render step runs. Requires the target type
+to match the source type and `raw/` to be non-empty. Useful when
 the original file structure must be preserved exactly (minus real secret values,
 which are injected in Step 4).
 
@@ -75,7 +75,7 @@ The pipeline calls `refine_hatch()`, which assembles an LLM prompt from:
    happened during spawning (redaction counts, record structure, metadata).
 3. **Redaction placeholders**: a listing of all `{{SECRET_NNN}}` / `{{PII_NNN}}`
    tokens in the Egg with their kind and description.
-4. **Original source files**: the redacted `raw/` contents (if available), so
+4. **Original source files**: the egg's redacted `raw/` contents (if available), so
    the LLM can compare against the mechanically reconstructed output.
 5. **Reconstructed files**: the file dict from Step 2, formatted as
    `--- filename ---\ncontent\n`.
@@ -122,15 +122,51 @@ the Egg needs.
 
 **Log entry per substitution:** `secret_injection` (placeholder name).
 
-## Step 5: Write to disk
+## Step 5: Write connector (agent) files
 
-All files in the dict are written to the output directory (default `./agent/`).
-Parent directories are created as needed. The function returns a list of
-created filenames.
+All connector-produced files are written to the `agent/` subdirectory inside
+the output directory (e.g. `./agent/agent/`). Parent directories are created
+as needed. Each filename in `files_created` is prefixed with `agent/`.
 
-## Step 6: Hatch log
+## Step 6: Write standard artifacts
+
+Egg-level standard artifacts are written to the output directory root:
+
+| File | Source | Condition |
+|------|--------|-----------|
+| `AGENTS.md` | `egg.agents_md` | Present in egg |
+| `agent-card.json` | `egg.a2a_card` | Present in egg |
+| `apm.yml` | `egg.apm_yml` | Present in egg |
+| `mcp.json` | `egg.mcp.configs` | At least one MCP server configured |
+
+This separation keeps deployment-level metadata (standards) at the root and
+platform-specific runtime files inside `agent/`.
+
+**Log entry:** `standards_written` (list of files created).
+
+### Output layout example
+
+```text
+<output_dir>/
+  AGENTS.md            # deployment runbook
+  agent-card.json      # A2A card
+  apm.yml              # APM manifest
+  mcp.json             # MCP configs (Claude Desktop format)
+  agent/               # platform-specific runtime files
+    SOUL.md
+    AGENTS.md          # flow memory (OpenClaw-specific)
+    USER.md
+    skills/
+    mcp.json           # connector-produced MCP config
+    config.json
+  logs/
+    hatch_log.json
+```
+
+## Step 7: Hatch log
 
 The accumulated `hatch_log` entries are written to `logs/hatch_log.json`
 inside the output directory. This provides an audit trail of what happened
 during hatching: which mode was used, how many files were rendered, which
-secrets were injected, and any LLM warnings.
+secrets were injected, which standard artifacts were written, and any LLM
+warnings.

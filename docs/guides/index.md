@@ -12,8 +12,6 @@ security
 llm-refinement
 standards
 nest-registry
-troubleshooting
 adding-connectors
 code-style
-code-quality
 ```

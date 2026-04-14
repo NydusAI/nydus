@@ -1,0 +1,11 @@
+name: nydus-openclaw-base
+version: 0.0.1
+description: Base OpenClaw agent built with Nydus
+author: Nydus
+license: MIT
+runtime:
+  language: python
+  version: ">=3.10"
+capabilities:
+  - text-generation
+  - tool-use

@@ -1,0 +1,14 @@
+[agent]
+name = "nydus-zeroclaw-base"
+model = "claude-3-5-sonnet"
+description = "Base ZeroClaw agent built with Nydus"
+version = "0.0.1"
+
+[credentials]
+API_KEY = "sk-replace-me"
+
+[autonomy]
+level = "supervised"
+
+[security]
+workspace_only = true

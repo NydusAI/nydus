@@ -14,7 +14,7 @@ Directive := FROM | SOURCE | REDACT | EXCLUDE
 
 > **Note:** Registry-qualified `FROM` lines such as `FROM nydus/openclaw:0.3.0`
 > use **example** name and version strings. Your Nest server defines what is
-> actually published. For a local base egg, build from `pynydus/eggs/base/` (for
+> actually published. For a local base egg, build from `eggs/base/` (for
 > example `openclaw/0.0.1`) and use `FROM ./base.egg`, or point `FROM` at any
 > path returned by `nydus spawn`.
 
@@ -93,7 +93,7 @@ Repeatable. Names a memory label to omit from the final Egg:
 Memory[**persona**], Memory[**flow**], Memory[**context**], or
 Memory[**state**]. Matching is case-insensitive.
 
-Source files are still read and appear in `raw/`. Only structured memory
+Source files are still read and appear in the archive's `raw/` snapshot. Only structured memory
 for those buckets is dropped. Skills are not affected.
 
 

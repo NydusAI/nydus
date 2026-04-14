@@ -31,10 +31,10 @@ class TestRebuildLayout:
         out = tmp_path / "rebuild"
         self.result = hatch(loaded, target=AgentType.LETTA, output_dir=out)
         self.out = out
-        self.af = json.loads((out / "agent.af").read_text())
+        self.af = json.loads((out / "agent" / "agent.af").read_text())
 
     def test_af_present(self):
-        assert "agent.af" in self.result.files_created
+        assert "agent/agent.af" in self.result.files_created
 
     def test_af_has_agents(self):
         assert "agents" in self.af
@@ -91,10 +91,10 @@ class TestRebuildLayout:
     def test_no_legacy_files(self):
         for bad in ("agent_state.json", "system_prompt.md", ".letta/config.json"):
             assert bad not in self.result.files_created, f"Legacy file {bad} should not exist"
-        assert not any(f.startswith("tools/") for f in self.result.files_created)
+        assert not any(f.startswith("agent/tools/") for f in self.result.files_created)
 
     def test_valid_json(self):
-        content = (self.out / "agent.af").read_text()
+        content = (self.out / "agent" / "agent.af").read_text()
         parsed = json.loads(content)
         assert isinstance(parsed, dict)
         assert "agents" in parsed

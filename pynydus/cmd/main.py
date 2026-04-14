@@ -21,6 +21,17 @@ app = typer.Typer(
 )
 
 
+def _print_llm_status(llm_config) -> None:  # noqa: ANN001
+    """Print LLM refinement status at the start of a pipeline command."""
+    if llm_config is not None:
+        rprint(f"  [green]LLM refinement: enabled ({llm_config.provider}/{llm_config.model})[/green]")
+    else:
+        rprint(
+            "  [dim]LLM refinement: disabled "
+            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
+        )
+
+
 # ---------------------------------------------------------------------------
 # spawn
 # ---------------------------------------------------------------------------
@@ -46,6 +57,8 @@ def spawn(
     from pynydus.engine.pipeline import spawn as engine_spawn
 
     nydus_cfg = load_config()
+    rprint("[bold]Spawning egg...[/bold]")
+    _print_llm_status(nydus_cfg.llm)
 
     try:
         nydusfile_path = resolve_nydusfile(Path.cwd())
@@ -104,11 +117,6 @@ def spawn(
             parts.append(f"{counts['extraction']} value extractions")
         if parts:
             rprint(f"  [dim]logs: {', '.join(parts)}[/dim]")
-    if nydus_cfg.llm is None:
-        rprint(
-            "  [dim]LLM refinement disabled "
-            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -119,23 +127,26 @@ def spawn(
 @app.command()
 def hatch(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
-    target: Annotated[str, typer.Option("--target", help="Target runtime")] = ...,  # type: ignore[assignment]
-    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path(
-        "./agent/"
-    ),
+    target: Annotated[str, typer.Option("-t", "--target", help="Target runtime")] = ...,  # type: ignore[assignment]
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Output directory (default: ./<target>/)"),
+    ] = None,
     secrets: Annotated[
         Path | None,
-        typer.Option("--secrets", help="Path to .env substitution file"),
+        typer.Option("-s", "--secrets", help="Path to .env substitution file"),
     ] = None,
     passthrough: Annotated[
         bool,
         typer.Option(
-            "--passthrough", help="Replay redacted raw/ snapshot instead of rebuilding from modules"
+            "-P",
+            "--passthrough",
+            help="Replay the egg's redacted raw/ snapshot instead of rebuilding from modules",
         ),
     ] = False,
     skip_validation: Annotated[
         bool,
-        typer.Option("--skip-validation", help="Skip egg validation before hatching"),
+        typer.Option("-S", "--skip-validation", help="Skip egg validation before hatching"),
     ] = False,
 ) -> None:
     """Deploy an Egg into a target runtime.
@@ -143,9 +154,9 @@ def hatch(
     Args:
         egg_path: Path to the ``.egg`` file.
         target: Destination runtime (e.g. ``openclaw``, ``letta``, ``zeroclaw``).
-        output: Output directory for hatched files.
+        output: Output directory for hatched files (default: ``./<target>/``).
         secrets: Optional ``.env`` path for placeholder substitution at hatch.
-        passthrough: When set, replay ``raw/`` instead of rebuilding from modules.
+        passthrough: When set, replay the egg's ``raw/`` snapshot instead of rebuilding.
         skip_validation: When set, skip structural and per-standard validation.
     """
     from pynydus.common.enums import AgentType, HatchMode
@@ -155,6 +166,8 @@ def hatch(
     from pynydus.engine.validator import validate_egg
 
     nydus_cfg = load_config()
+    rprint(f"[bold]Hatching {egg_path.name} into {target}...[/bold]")
+    _print_llm_status(nydus_cfg.llm)
 
     # Fail fast on tampered eggs before doing any disk I/O
     sig_status = verify_egg_archive(egg_path)
@@ -164,14 +177,16 @@ def hatch(
         )
         raise typer.Exit(1)
     if sig_status is True:
-        rprint("[green]Signature verified.[/green]")
-    # sig_status is None → unsigned, proceed silently
+        rprint("  [green]Signature verified.[/green]")
 
     try:
         egg = load(egg_path)
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+    if output is None:
+        output = Path(f"./{target}/")
 
     # Validation gate: reject eggs with errors before hatching
     if not skip_validation:
@@ -182,8 +197,30 @@ def hatch(
                 color = "red" if issue.level == "error" else "yellow"
                 loc = f" ({issue.location})" if issue.location else ""
                 rprint(f"  [{color}]{issue.level}:[/{color}] {issue.message}{loc}")
-            rprint("[dim]Use --skip-validation to hatch anyway.[/dim]")
+            rprint("[dim]Use --skip-validation (-S) to hatch anyway.[/dim]")
             raise typer.Exit(1)
+
+    # Interactive secret prompting when --secrets is not provided
+    tmp_secrets_path: Path | None = None
+    if secrets is None and egg.secrets.secrets:
+        rprint(f"[yellow]This egg requires {len(egg.secrets.secrets)} secret(s).[/yellow]")
+        env_lines: list[str] = []
+        for s in egg.secrets.secrets:
+            req = "required" if s.required_at_hatch else "optional"
+            desc = s.description or s.pii_type or ""
+            if desc:
+                rprint(f"  [dim]{s.name}: {desc}[/dim]")
+            value = typer.prompt(f"  {s.name} ({s.kind.value}, {req})")
+            if not value.strip() and s.required_at_hatch:
+                rprint(f"[red]Error:[/red] Required secret '{s.name}' cannot be empty.")
+                raise typer.Exit(1)
+            if value.strip():
+                env_lines.append(f"{s.name}={value}")
+        if env_lines:
+            tmp_secrets_path = output / ".nydus_secrets.env"
+            tmp_secrets_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_secrets_path.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+            secrets = tmp_secrets_path
 
     try:
         result = engine_hatch(
@@ -197,17 +234,24 @@ def hatch(
     except Exception as e:
         rprint(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    finally:
+        if tmp_secrets_path and tmp_secrets_path.exists():
+            tmp_secrets_path.unlink()
+
+    std_files = [f for f in result.files_created if not f.startswith("agent/")]
+    agent_files = [f for f in result.files_created if f.startswith("agent/")]
 
     rprint(f"[green]Hatched into {target}:[/green] {result.output_dir}")
-    for f in result.files_created:
-        rprint(f"  {f}")
+    if std_files:
+        rprint("  [bold]Standards:[/bold]")
+        for f in std_files:
+            rprint(f"    {f}")
+    if agent_files:
+        rprint("  [bold]Agent files (agent/):[/bold]")
+        for f in agent_files:
+            rprint(f"    {f.removeprefix('agent/')}")
     for w in result.warnings:
         rprint(f"  [yellow]Warning:[/yellow] {w}")
-    if nydus_cfg.llm is None:
-        rprint(
-            "  [dim]LLM refinement disabled "
-            "(set NYDUS_LLM_TYPE and NYDUS_LLM_API_KEY to enable)[/dim]"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -262,11 +306,13 @@ def env(
 def inspect(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
     show_secrets: Annotated[
-        bool, typer.Option("--secrets", help="List all placeholders and occurrences")
+        bool, typer.Option("-s", "--secrets", help="List all placeholders and occurrences")
     ] = False,
-    show_logs: Annotated[bool, typer.Option("--logs", help="Show pipeline log summary")] = False,
+    show_logs: Annotated[
+        bool, typer.Option("-l", "--logs", help="Show pipeline log summary")
+    ] = False,
     no_validate: Annotated[
-        bool, typer.Option("--no-validate", help="Skip per-standard validation")
+        bool, typer.Option("-n", "--no-validate", help="Skip per-standard validation")
     ] = False,
 ) -> None:
     """Print Egg summary with inline validation.
@@ -469,7 +515,7 @@ def _write_extracted(files: dict[str, str], output_dir: Path, label: str) -> Non
 
 @extract_app.command("mcp")
 def extract_mcp(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
 ) -> None:
     """Extract MCP server configs (mcp.json)."""
@@ -481,7 +527,7 @@ def extract_mcp(
 
 @extract_app.command("skills")
 def extract_skills(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
 ) -> None:
     """Extract Agent Skills (SKILL.md files)."""
@@ -493,7 +539,7 @@ def extract_skills(
 
 @extract_app.command("a2a")
 def extract_a2a(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
 ) -> None:
     """Extract A2A agent card (agent-card.json)."""
@@ -505,7 +551,7 @@ def extract_a2a(
 
 @extract_app.command("apm")
 def extract_apm(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
 ) -> None:
     """Extract APM manifest (apm.yml). Passthrough only."""
@@ -517,7 +563,7 @@ def extract_apm(
 
 @extract_app.command("agents")
 def extract_agents(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
 ) -> None:
     """Extract per-egg AGENTS.md deployment runbook."""
@@ -529,7 +575,7 @@ def extract_agents(
 
 @extract_app.command("specs")
 def extract_specs(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path(
         "./specs"
     ),
@@ -544,7 +590,7 @@ def extract_specs(
 
 @extract_app.command("all")
 def extract_all(
-    egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
+    egg_path: Annotated[Path, typer.Option("-f", "--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path(
         "./extracted"
     ),
@@ -675,7 +721,7 @@ def delete(
 def keygen(
     key_dir: Annotated[
         Path | None,
-        typer.Option("--dir", help="Directory to write keys to"),
+        typer.Option("-d", "--dir", help="Directory to write keys to"),
     ] = None,
 ) -> None:
     """Generate an Ed25519 keypair for egg signing.
@@ -700,9 +746,9 @@ def keygen(
 @app.command()
 def push(
     egg_path: Annotated[Path, typer.Argument(help="Path to .egg file")],
-    name: Annotated[str, typer.Option("--name", help="Registry name (user/egg-name)")] = ...,  # type: ignore[assignment]
-    version: Annotated[str, typer.Option("--version", help="Version string (e.g. 0.1.0)")] = ...,  # type: ignore[assignment]
-    author: Annotated[str | None, typer.Option("--author", help="Author name")] = None,
+    name: Annotated[str, typer.Option("-n", "--name", help="Registry name (user/egg-name)")] = ...,  # type: ignore[assignment]
+    version: Annotated[str, typer.Option("-v", "--version", help="Version string (e.g. 0.1.0)")] = ...,  # type: ignore[assignment]
+    author: Annotated[str | None, typer.Option("-a", "--author", help="Author name")] = None,
 ) -> None:
     """Publish an Egg to the Nest registry.
 
@@ -746,7 +792,7 @@ def push(
 @app.command()
 def pull(
     name: Annotated[str, typer.Argument(help="Registry name (user/egg-name)")],
-    version: Annotated[str, typer.Option("--version", help="Version to pull")] = ...,  # type: ignore[assignment]
+    version: Annotated[str, typer.Option("-v", "--version", help="Version to pull")] = ...,  # type: ignore[assignment]
     output: Annotated[Path, typer.Option("-o", "--output", help="Output path")] = Path(
         "pulled.egg"
     ),

@@ -46,7 +46,7 @@ print(result.output_dir, result.files_created, result.warnings)
 - `spawn()` fills `egg.raw_artifacts` and `egg.spawn_log`. `save()` writes
   them to the archive by default.
 - `hatch()` defaults to **rebuild** mode (regenerate files from structured Egg
-  modules). Set `mode="passthrough"` to replay the redacted `raw/` snapshot
+  modules). Set `mode="passthrough"` to replay the egg's redacted `raw/` snapshot
   verbatim. Passthrough requires `egg.raw_artifacts` to be non-empty, which
   it is after `spawn()` or `load()` with the default `include_raw=True`.
 - If you loaded with `load(..., include_raw=False)`, `raw_artifacts` is empty.

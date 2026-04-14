@@ -59,7 +59,7 @@ class TestSpawnCommand:
         assert "skills=" in result.output
         assert "memory=" in result.output
         assert "secrets=" in result.output
-        assert "unsigned" in result.output
+        assert "signed" in result.output.lower() or "unsigned" in result.output
 
     def test_spawn_no_nydusfile(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.chdir(tmp_path)

@@ -41,10 +41,10 @@ class TestPassthroughLayout:
         self.out = out
 
     def test_af_preserved(self):
-        assert "agent.af" in self.result.files_created
+        assert "agent/agent.af" in self.result.files_created
 
     def test_content_matches_source(self):
-        content = (self.out / "agent.af").read_text()
+        content = (self.out / "agent" / "agent.af").read_text()
         af = json.loads(content)
         assert "agents" in af
         assert af["agents"][0]["system"] == SYSTEM_PROMPT
@@ -68,11 +68,11 @@ class TestRebuildVsPassthrough:
             raw_artifacts=loaded.raw_artifacts or raw,
         )
 
-        assert "agent.af" in set(rebuild.files_created)
-        assert "agent.af" in set(passthrough.files_created)
+        assert "agent/agent.af" in set(rebuild.files_created)
+        assert "agent/agent.af" in set(passthrough.files_created)
 
-        rebuild_af = json.loads((rebuild_out / "agent.af").read_text())
-        passthrough_af = json.loads((passthrough_out / "agent.af").read_text())
+        rebuild_af = json.loads((rebuild_out / "agent" / "agent.af").read_text())
+        passthrough_af = json.loads((passthrough_out / "agent" / "agent.af").read_text())
 
         rebuild_agent = rebuild_af["agents"][0]
         passthrough_agent = passthrough_af["agents"][0]

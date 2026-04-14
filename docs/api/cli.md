@@ -26,8 +26,16 @@ nydus spawn [OPTIONS]
 
 
 Deploy an Egg into a target runtime. Default mode is **rebuild** (generate
-from structured modules). Use `--passthrough` to replay the archived `raw/`
-snapshot verbatim.
+from structured modules). Use `--passthrough` to replay the egg's archived
+`raw/` snapshot verbatim.
+
+If `--secrets` is omitted and the egg has secrets, the command interactively
+prompts for each secret value via stdin. Required secrets that are left empty
+cause the command to abort.
+
+Output is structured: standard artifacts (`AGENTS.md`, `agent-card.json`,
+`apm.yml`, `mcp.json`) are written to the output root, and platform-specific
+runtime files go into an `agent/` subdirectory.
 
 
 ```bash
@@ -37,10 +45,11 @@ nydus hatch <EGG_PATH> [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `EGG_PATH` | (required) | Path to `.egg` file |
-| `--target` | (required) | Target: `openclaw`, `zeroclaw`, `letta` |
-| `-o`, `--output` | `./agent/` | Output directory |
-| `--secrets` | (none) | `.env` substitution file |
-| `--passthrough` | `false` | Replay redacted `raw/` (requires target = source) |
+| `-t`, `--target` | (required) | Target: `openclaw`, `zeroclaw`, `letta` |
+| `-o`, `--output` | `./<target>/` | Output directory |
+| `-s`, `--secrets` | (none) | `.env` substitution file |
+| `-P`, `--passthrough` | `false` | Replay egg's redacted `raw/` snapshot (requires target = source) |
+| `-S`, `--skip-validation` | `false` | Skip egg validation before hatching |
 
 ---
 
@@ -74,9 +83,9 @@ nydus inspect <EGG_PATH> [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `EGG_PATH` | (required) | Path to `.egg` file |
-| `--secrets` | `false` | List all placeholders and occurrences |
-| `--logs` | `false` | Show pipeline log summary |
-| `--no-validate` | `false` | Skip per-standard schema validation |
+| `-s`, `--secrets` | `false` | List all placeholders and occurrences |
+| `-l`, `--logs` | `false` | Show pipeline log summary |
+| `-n`, `--no-validate` | `false` | Skip per-standard schema validation |
 
 ---
 
@@ -88,7 +97,7 @@ Extract standard artifacts from an Egg. Subcommands: `mcp`, `skills`, `a2a`,
 
 
 ```bash
-nydus extract <SUBCOMMAND> --from <EGG_PATH> [-o <OUTPUT_DIR>]
+nydus extract <SUBCOMMAND> -f <EGG_PATH> [-o <OUTPUT_DIR>]
 ```
 
 | Subcommand | Default output | Description |
@@ -148,7 +157,7 @@ nydus keygen [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--dir` | `~/.nydus/keys/` | Directory to write keys to |
+| `-d`, `--dir` | `~/.nydus/keys/` | Directory to write keys to |
 
 ---
 
@@ -165,9 +174,9 @@ nydus push <EGG_PATH> [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `EGG_PATH` | (required) | Path to `.egg` file |
-| `--name` | (required) | Registry name (e.g. `user/my-agent`) |
-| `--version` | (required) | Version string |
-| `--author` | (none) | Author override |
+| `-n`, `--name` | (required) | Registry name (e.g. `user/my-agent`) |
+| `-v`, `--version` | (required) | Version string |
+| `-a`, `--author` | (none) | Author override |
 
 ---
 
@@ -184,7 +193,7 @@ nydus pull <NAME> [OPTIONS]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `NAME` | (required) | Registry name |
-| `--version` | (required) | Version to pull |
+| `-v`, `--version` | (required) | Version to pull |
 | `-o`, `--output` | `pulled.egg` | Output path |
 
 ---

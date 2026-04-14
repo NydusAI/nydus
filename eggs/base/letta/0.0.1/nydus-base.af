@@ -1,0 +1,57 @@
+{
+  "agents": [
+    {
+      "name": "nydus-letta-base",
+      "description": "Base Letta agent built with Nydus",
+      "system": "You are a helpful AI assistant running on the Letta platform. Follow the user's instructions carefully and use your tools when appropriate.",
+      "agent_type": "letta_v1_agent",
+      "llm_config": {
+        "model": "gpt-4o",
+        "context_window": 128000
+      },
+      "embedding_config": {
+        "embedding_model": "text-embedding-3-small"
+      },
+      "tool_exec_environment_variables": {
+        "OPENAI_API_KEY": "sk-replace-me",
+        "LETTA_SERVER_URL": "https://letta.example.com"
+      },
+      "tags": ["nydus", "base"]
+    }
+  ],
+  "blocks": [
+    {
+      "label": "persona",
+      "value": "I am a general-purpose AI assistant. I am knowledgeable, helpful, and honest. I think step-by-step and explain my reasoning."
+    },
+    {
+      "label": "human",
+      "value": "The user is a developer who prefers clear, concise responses with code examples when relevant."
+    },
+    {
+      "label": "scratchpad",
+      "value": "Letta agents use memory blocks (persona, human, system) to maintain persistent context across conversations. Tools should have clear docstrings and type hints for proper integration with the Letta runtime."
+    }
+  ],
+  "tools": [
+    {
+      "name": "search_web",
+      "tool_type": "custom",
+      "source_code": "def search_web(query: str) -> str:\n    \"\"\"Search the web for information.\n\n    Args:\n        query: The search query string.\n\n    Returns:\n        Search results as a formatted string.\n    \"\"\"\n    return f\"Results for: {query}\"\n"
+    }
+  ],
+  "mcp_servers": [
+    {
+      "server_name": "filesystem",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+      "env": {}
+    },
+    {
+      "server_name": "fetch",
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-fetch"],
+      "env": {}
+    }
+  ]
+}

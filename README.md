@@ -171,7 +171,7 @@ pynydus/
   llm/           # LLM tier models and Instructor client
   config.py      # Environment-based config loader
   remote/        # Nest registry client
-  eggs/base/     # Base egg source definitions (Nydusfile + agent files per version)
+eggs/base/       # Base egg source definitions (Nydusfile + agent files per version)
 specs/           # Spec files with embedded JSON Schema (mcp, agentskills, a2a, apm, agents)
 tests/
   unit/          # Unit tests (mocked dependencies)
@@ -214,9 +214,8 @@ make fmt          # Ruff formatter + auto-fix lint
 make check        # Ruff format check + lint (no writes)
 ```
 
-Docstring and comment conventions are documented in
-[docs/guides/code-style.md](docs/guides/code-style.md). CI runs Ruff;
-see [docs/guides/code-quality.md](docs/guides/code-quality.md).
+Docstring, comment, and lint conventions are documented in
+[docs/guides/code-style.md](docs/guides/code-style.md).
 
 ### Documentation
 

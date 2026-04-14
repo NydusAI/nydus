@@ -103,9 +103,9 @@ _WRITERS = {
 
 # Expectations per target for a non-empty egg
 _TARGET_EXPECTED_FILES = {
-    AgentType.OPENCLAW: {"SOUL.md", "MEMORY.md"},
-    AgentType.ZEROCLAW: {"persona.md", "knowledge.md", ".zeroclaw/.keep"},
-    AgentType.LETTA: {"agent.af"},
+    AgentType.OPENCLAW: {"agent/SOUL.md", "agent/MEMORY.md"},
+    AgentType.ZEROCLAW: {"agent/persona.md", "agent/knowledge.md", "agent/.zeroclaw/.keep"},
+    AgentType.LETTA: {"agent/agent.af"},
 }
 
 

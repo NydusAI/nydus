@@ -37,30 +37,30 @@ class TestPassthroughLayout:
         self.out = out
 
     def test_uppercase_filenames_preserved(self):
-        assert "SOUL.md" in self.result.files_created
-        assert "IDENTITY.md" in self.result.files_created
+        assert "agent/SOUL.md" in self.result.files_created
+        assert "agent/IDENTITY.md" in self.result.files_created
         assert "AGENTS.md" in self.result.files_created
-        assert "USER.md" in self.result.files_created
-        assert "TOOLS.md" in self.result.files_created
-        assert "MEMORY.md" in self.result.files_created
+        assert "agent/USER.md" in self.result.files_created
+        assert "agent/TOOLS.md" in self.result.files_created
+        assert "agent/MEMORY.md" in self.result.files_created
 
     def test_tools_dir_preserved(self):
-        assert "tools/search_web.py" in self.result.files_created
-        assert "tools/file_read.py" in self.result.files_created
+        assert "agent/tools/search_web.py" in self.result.files_created
+        assert "agent/tools/file_read.py" in self.result.files_created
 
     def test_memory_dir_preserved(self):
-        assert "memory/2026-03-15.md" in self.result.files_created
-        assert "memory/2026-03-17.md" in self.result.files_created
+        assert "agent/memory/2026-03-15.md" in self.result.files_created
+        assert "agent/memory/2026-03-17.md" in self.result.files_created
 
     def test_config_toml_preserved(self):
-        assert "config.toml" in self.result.files_created
-        content = (self.out / "config.toml").read_text()
+        assert "agent/config.toml" in self.result.files_created
+        content = (self.out / "agent" / "config.toml").read_text()
         assert "claude-3" in content
 
     def test_content_matches_source(self):
-        assert "code examples" in (self.out / "SOUL.md").read_text()
-        assert "ZeroClaw Agent v2" in (self.out / "IDENTITY.md").read_text()
-        assert "epoll" in (self.out / "memory" / "2026-03-15.md").read_text()
+        assert "code examples" in (self.out / "agent" / "SOUL.md").read_text()
+        assert "ZeroClaw Agent v2" in (self.out / "agent" / "IDENTITY.md").read_text()
+        assert "epoll" in (self.out / "agent" / "memory" / "2026-03-15.md").read_text()
 
 
 class TestRebuildVsPassthrough:
@@ -84,10 +84,20 @@ class TestRebuildVsPassthrough:
         rebuild_files = set(rebuild.files_created)
         passthrough_files = set(passthrough.files_created)
 
-        for key_file in ("persona.md", "agents.md", "user.md", "knowledge.md"):
+        for key_file in (
+            "agent/persona.md",
+            "agent/agents.md",
+            "agent/user.md",
+            "agent/knowledge.md",
+        ):
             assert key_file in rebuild_files, f"{key_file} missing from rebuild"
 
-        for key_file in ("SOUL.md", "AGENTS.md", "USER.md", "MEMORY.md"):
+        for key_file in (
+            "agent/SOUL.md",
+            "AGENTS.md",
+            "agent/USER.md",
+            "agent/MEMORY.md",
+        ):
             assert key_file in passthrough_files, f"{key_file} missing from passthrough"
 
         rebuild_all = " ".join(

@@ -22,7 +22,7 @@ All Nydus exceptions inherit from `NydusError`.
 `HatchError`
 : Error during the hatching pipeline (e.g., missing required secrets,
   version incompatibility, invalid hatch `mode`, or `passthrough` requested when
-  the target does not match the egg source or `raw/` is empty).
+  the target does not match the egg source or the egg's `raw/` snapshot is empty).
 
 `ConfigError`
 : Error in Nydus configuration (e.g., missing registry URL, invalid LLM

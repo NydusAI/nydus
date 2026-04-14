@@ -37,25 +37,25 @@ class TestPassthroughLayout:
         self.out = out
 
     def test_uppercase_filenames_preserved(self):
-        assert "SOUL.md" in self.result.files_created
-        assert "IDENTITY.md" in self.result.files_created
+        assert "agent/SOUL.md" in self.result.files_created
+        assert "agent/IDENTITY.md" in self.result.files_created
         assert "AGENTS.md" in self.result.files_created
-        assert "USER.md" in self.result.files_created
-        assert "TOOLS.md" in self.result.files_created
-        assert "MEMORY.md" in self.result.files_created
+        assert "agent/USER.md" in self.result.files_created
+        assert "agent/TOOLS.md" in self.result.files_created
+        assert "agent/MEMORY.md" in self.result.files_created
 
     def test_skills_dir_preserved(self):
-        assert "skills/book-flight.md" in self.result.files_created
-        assert "skills/search-hotels.md" in self.result.files_created
+        assert "agent/skills/book-flight.md" in self.result.files_created
+        assert "agent/skills/search-hotels.md" in self.result.files_created
 
     def test_memory_dir_preserved(self):
-        assert "memory/2026-04-01.md" in self.result.files_created
-        assert "memory/2026-04-03.md" in self.result.files_created
+        assert "agent/memory/2026-04-01.md" in self.result.files_created
+        assert "agent/memory/2026-04-03.md" in self.result.files_created
 
     def test_content_matches_source(self):
-        assert "no filler" in (self.out / "SOUL.md").read_text()
-        assert "Voyager" in (self.out / "IDENTITY.md").read_text()
-        assert "nonstop" in (self.out / "memory" / "2026-04-01.md").read_text()
+        assert "no filler" in (self.out / "agent" / "SOUL.md").read_text()
+        assert "Voyager" in (self.out / "agent" / "IDENTITY.md").read_text()
+        assert "nonstop" in (self.out / "agent" / "memory" / "2026-04-01.md").read_text()
 
 
 class TestRebuildVsPassthrough:
@@ -79,7 +79,12 @@ class TestRebuildVsPassthrough:
         rebuild_files = set(rebuild.files_created)
         passthrough_files = set(passthrough.files_created)
 
-        for key_file in ("SOUL.md", "AGENTS.md", "USER.md", "MEMORY.md"):
+        for key_file in (
+            "agent/SOUL.md",
+            "AGENTS.md",
+            "agent/USER.md",
+            "agent/MEMORY.md",
+        ):
             assert key_file in rebuild_files, f"{key_file} missing from rebuild"
             assert key_file in passthrough_files, f"{key_file} missing from passthrough"
 

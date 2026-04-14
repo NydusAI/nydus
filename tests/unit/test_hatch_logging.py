@@ -375,10 +375,10 @@ class TestHatchModes:
             raw_artifacts=raw,
         )
 
-        assert "SOUL.md" in result.files_created
-        assert "MEMORY.md" in result.files_created
-        assert (out_dir / "SOUL.md").read_text() == "I am a soul."
-        assert (out_dir / "MEMORY.md").read_text() == "Facts here."
+        assert "agent/SOUL.md" in result.files_created
+        assert "agent/MEMORY.md" in result.files_created
+        assert (out_dir / "agent" / "SOUL.md").read_text() == "I am a soul."
+        assert (out_dir / "agent" / "MEMORY.md").read_text() == "Facts here."
 
     def test_rebuild_mode_creates_expected_files(self, tmp_path: Path):
         out_dir = tmp_path / "output"
@@ -414,12 +414,12 @@ class TestHatchModes:
 
         result = hatch(egg, target="openclaw", output_dir=out_dir)
 
-        assert "SOUL.md" in result.files_created
-        assert "skills/test.md" in result.files_created
+        assert "agent/SOUL.md" in result.files_created
+        assert "agent/skills/test.md" in result.files_created
 
 
 class TestHatchLogWrittenByPipeline:
-    """Step 6: hatch_log.json is written by the pipeline."""
+    """Step 7: hatch_log.json is written by the pipeline."""
 
     def test_hatch_log_json_created_in_output(self, tmp_path: Path):
         out_dir = tmp_path / "output"
