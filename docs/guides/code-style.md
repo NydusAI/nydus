@@ -224,10 +224,3 @@ Run manually:
 uv run ruff format --check pynydus tests
 uv run ruff check pynydus tests
 ```
-
-## Local-only files
-
-Optional notes, scratch scripts, and other files you do not intend to push
-can live under **`.internal/`** at the repository root. A tracked
-**`.internal/.gitkeep`** keeps that folder in the tree; everything else
-under `.internal/` is ignored via `.gitignore`.

@@ -89,9 +89,6 @@ Conventions for docstrings, comments, and typography are in
 [docs/guides/code-style.md](docs/guides/code-style.md) (also
 **Guides → Code Style** on Read the Docs).
 
-Optional local files you do not push can live under **`.internal/`** (gitignored),
-for example **`COMMENT_RULES.md`** or **`NEW_AGENTS.md`** if you keep personal copies there.
-
 ## Adding a new connector
 
 To add support for a new agent platform (e.g. `myagent`):
