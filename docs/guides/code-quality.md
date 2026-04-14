@@ -8,7 +8,7 @@ Runs **Ruff** format check and lint on `pynydus/` and `tests/`. There are no wri
 Use `make fmt` to auto-format and apply safe Ruff fixes.
 
 Docstring, comment, and typography **conventions** for this project are documented
-in {doc}`/contributing/code-style`. They are not enforced by a separate script in CI.
+in {doc}`/guides/code-style`. They are not enforced by a separate script in CI.
 
 ## Ruff
 
@@ -29,8 +29,3 @@ live under **`.internal/`** at the repository root (for example a personal
 `COMMENT_RULES.md` pointer or a working copy of **`NEW_AGENTS.md`**). A tracked
 **`.internal/.gitkeep`** keeps that folder in the tree; everything else under
 `.internal/` is ignored via `.gitignore`.
-
-## Checklist before you submit
-
-- [ ] {doc}`/contributing/code-style` (docstrings, comments, typography)
-- [ ] `make check` passes

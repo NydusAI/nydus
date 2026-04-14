@@ -1,4 +1,4 @@
-# Code style: comments and docstrings
+# Code Style
 
 Rules for docstrings and in-function comments in the `pynydus/` tree. Humans and
 automation should follow these conventions.
@@ -204,16 +204,3 @@ a separator for a single function.
   one-line summary.
 - Prefer **step headers** and short **why** comments at security boundaries.
   Avoid comments that only restate the next line of code.
-
-## Checklist before you submit
-
-- [ ] Every module has a file-level docstring
-- [ ] Every public function in `pynydus/` (and `docs/conf.py`) has Google-style
-      docstrings with `Args:` (and `Returns:` / `Raises:` when applicable)
-- [ ] Long private helpers have at least a summary line
-- [ ] Pipeline steps have step-header comments where helpful
-- [ ] Security boundaries have why comments where helpful
-- [ ] No comment only restates the next line of code
-- [ ] No docstring only restates the function name or wiring
-- [ ] Typography rules above (no U+2014 em dash, no `;` in the listed surfaces)
-- [ ] `make check` passes ({doc}`/guides/code-quality`)

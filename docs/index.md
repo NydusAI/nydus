@@ -40,7 +40,6 @@ result = ny.hatch(egg, target="letta", output_dir=Path("out"))
 :maxdepth: 2
 
 getting-started/index
-contributing/index
 guides/index
 design/index
 api/index

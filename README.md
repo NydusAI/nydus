@@ -215,7 +215,7 @@ make check        # Ruff format check + lint (no writes)
 ```
 
 Docstring and comment conventions are documented in
-[docs/contributing/code-style.md](docs/contributing/code-style.md). CI runs Ruff;
+[docs/guides/code-style.md](docs/guides/code-style.md). CI runs Ruff;
 see [docs/guides/code-quality.md](docs/guides/code-quality.md).
 
 ### Documentation
