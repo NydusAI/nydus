@@ -7,7 +7,7 @@ A2A, APM, AGENTS.md) and exposes up to three functions:
     extract(egg) -> dict[str, str]
     generate(egg, **kwargs) -> dict[str, str]
 
-Not all modules implement all three — APM only has ``extract()``.
+Not all modules implement all three. APM only has ``extract()``.
 """
 
 from pynydus.standards._loader import load_spec, validate_against_schema

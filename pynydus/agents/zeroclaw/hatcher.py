@@ -30,6 +30,8 @@ from pynydus.api.raw_types import RenderResult
 from pynydus.api.schemas import Egg, HatchResult, MemoryRecord
 from pynydus.common.connector_utils import (
     date_key_from_record as _date_key_from_record,
+)
+from pynydus.common.connector_utils import (
     join_records as _join_records,
 )
 from pynydus.common.connector_utils import skill_to_filename as _skill_to_filename
@@ -104,7 +106,7 @@ class ZeroClawHatcher(Hatcher):
 
         Args:
             egg: The Egg to render.
-            output_dir: Target directory (unused; pipeline performs disk I/O).
+            output_dir: Target directory (unused, pipeline performs disk I/O).
 
         Returns:
             File dict and any warnings produced during rendering.

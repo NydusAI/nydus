@@ -150,6 +150,12 @@ def date_key_from_record(rec: MemoryRecord) -> str | None:
 
     Prefers the record's timestamp field. Falls back to extracting a date
     from source_store (e.g. ``memory/2026-04-01.md``).
+
+    Args:
+        rec: Memory record with optional timestamp and source store path.
+
+    Returns:
+        Date string ``YYYY-MM-DD``, or ``None`` if no date could be determined.
     """
     if rec.timestamp:
         return rec.timestamp.strftime("%Y-%m-%d")

@@ -46,7 +46,7 @@ class AgentSkill(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Parse / Render
+# Parse / render
 # ---------------------------------------------------------------------------
 
 _FRONTMATTER_RE = re.compile(
@@ -170,5 +170,3 @@ def skill_slug(name: str) -> str:
     slug = _CONSECUTIVE_HYPHENS.sub("-", slug)
     slug = slug[:64].rstrip("-")
     return slug or "unnamed"
-
-

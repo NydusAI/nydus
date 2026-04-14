@@ -73,9 +73,7 @@ def diff_eggs(egg_a: Egg, egg_b: Egg) -> DiffReport:
     manifest_changes = _diff_manifest(egg_a, egg_b)
     entries: list[DiffEntry] = []
 
-    entries.extend(
-        _diff_skill_records(list(egg_a.skills.skills), list(egg_b.skills.skills))
-    )
+    entries.extend(_diff_skill_records(list(egg_a.skills.skills), list(egg_b.skills.skills)))
     entries.extend(
         _diff_records(
             list(egg_a.memory.memory),

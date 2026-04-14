@@ -258,7 +258,9 @@ class LettaSpawner(Spawner):
 
         llm_model, llm_context_window, embedding_model = _extract_af_llm_embedding(agent)
         agent_name = agent.get("name") if isinstance(agent.get("name"), str) else None
-        agent_description = agent.get("description") if isinstance(agent.get("description"), str) else None
+        agent_description = (
+            agent.get("description") if isinstance(agent.get("description"), str) else None
+        )
 
         extra_lines: list[str] = []
         atype = agent.get("agent_type")

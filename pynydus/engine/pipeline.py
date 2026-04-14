@@ -372,7 +372,6 @@ def _resolve_base_egg(
 
     base = load_base_egg(base_ref)
     partial = merge(base, ctx.merge_ops, base_dir=ctx.nydusfile_dir)
-    # base_egg is set on Manifest directly by _package_egg via ctx.base_egg
 
     ctx.spawn_log.append(
         {
@@ -991,9 +990,7 @@ def _embed_spec_snapshots(ctx: PipelineContext) -> dict[str, str] | None:
         {"nydus_version": pynydus.__version__, "specs": spec_versions},
         indent=2,
     )
-    ctx.spawn_log.append(
-        {"type": "specs_embedded", "specs": list(spec_snapshots.keys())}
-    )
+    ctx.spawn_log.append({"type": "specs_embedded", "specs": list(spec_snapshots.keys())})
     return spec_snapshots
 
 
@@ -1004,7 +1001,7 @@ def _generate_standards_artifacts(
 ) -> Egg:
     """Generate A2A card, AGENTS.md, spec snapshots, and stash apm.yml.
 
-    Mutates nothing — returns a new Egg via ``model_copy()``.
+    Mutates nothing. Returns a new Egg via ``model_copy()``.
     """
     from pynydus.standards import agents_md
 

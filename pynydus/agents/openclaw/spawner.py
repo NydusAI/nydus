@@ -15,8 +15,6 @@ Parses an OpenClaw workspace directory containing:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from pynydus.api.protocols import Spawner
 from pynydus.api.raw_types import (
     ParseResult,
@@ -132,7 +130,6 @@ class OpenClawSpawner(Spawner):
 # ---------------------------------------------------------------------------
 # Utility functions
 # ---------------------------------------------------------------------------
-
 
 
 def _split_markdown_sections(text: str) -> list[dict[str, str]]:

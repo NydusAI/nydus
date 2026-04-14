@@ -2,7 +2,7 @@
 
 ``classify`` returns **ignored** for known binary/non-text extensions and
 **plain** for everything else. ``partition_files`` splits on that: ignored
-entries are skipped; the rest are scanned as UTF-8 text.
+entries are skipped. The rest are scanned as UTF-8 text.
 """
 
 from __future__ import annotations

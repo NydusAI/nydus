@@ -2,7 +2,7 @@
 
 Entry point for ``nydus`` commands: spawn, hatch, inspect, extract, diff,
 registry operations, and key management. Validation is embedded in
-``inspect`` and ``hatch`` — there is no standalone ``validate`` command.
+``inspect`` and ``hatch``. There is no standalone ``validate`` command.
 """
 
 from __future__ import annotations
@@ -89,7 +89,6 @@ def spawn(
         rprint("  [green]signed[/green] (Ed25519)")
     else:
         rprint("  [dim]unsigned (run 'nydus keygen' to enable signing)[/dim]")
-    # Summary of pipeline activity
     if spawn_log:
         from collections import Counter
 
@@ -136,9 +135,7 @@ def hatch(
     ] = False,
     skip_validation: Annotated[
         bool,
-        typer.Option(
-            "--skip-validation", help="Skip egg validation before hatching"
-        ),
+        typer.Option("--skip-validation", help="Skip egg validation before hatching"),
     ] = False,
 ) -> None:
     """Deploy an Egg into a target runtime.
@@ -180,7 +177,7 @@ def hatch(
     if not skip_validation:
         report = validate_egg(egg)
         if not report.valid:
-            rprint("[red]Egg validation failed — aborting hatch.[/red]")
+            rprint("[red]Egg validation failed. Aborting hatch.[/red]")
             for issue in report.issues:
                 color = "red" if issue.level == "error" else "yellow"
                 loc = f" ({issue.location})" if issue.location else ""
@@ -314,7 +311,6 @@ def inspect(
         f"secrets={len(egg.secrets.secrets)}"
     )
 
-    # Standards summary
     standards: list[str] = []
     if egg.mcp.configs:
         standards.append(f"mcp={len(egg.mcp.configs)} server(s)")
@@ -329,7 +325,6 @@ def inspect(
     if standards:
         rprint(f"  {' | '.join(standards)}")
 
-    # Inline validation
     if not no_validate:
         report = validate_egg(egg)
         errors = [i for i in report.issues if i.level == "error"]
@@ -442,7 +437,7 @@ extract_app = typer.Typer(
 app.add_typer(extract_app, name="extract")
 
 
-def _load_egg_for_extract(egg_path: Path) -> "Egg":  # noqa: F821
+def _load_egg_for_extract(egg_path: Path) -> Egg:  # noqa: F821
     """Load an egg, handling errors consistently for all extract subcommands."""
     from pynydus.engine.packager import load
 
@@ -513,7 +508,7 @@ def extract_apm(
     egg_path: Annotated[Path, typer.Option("--from", help="Path to .egg file")],
     output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")] = Path("."),
 ) -> None:
-    """Extract APM manifest (apm.yml) — passthrough only."""
+    """Extract APM manifest (apm.yml). Passthrough only."""
     from pynydus.standards import apm
 
     egg = _load_egg_for_extract(egg_path)

@@ -17,6 +17,14 @@ def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationI
 
     Checks that required sections (Prerequisites, Hatch) are present,
     and that optional sections exist when the egg has relevant data.
+
+    Args:
+        egg: The Egg to validate.
+        schema: Optional JSON Schema dict. When ``None``, the schema is loaded
+            from the bundled ``agents`` spec.
+
+    Returns:
+        List of validation issues (empty if valid or if ``agents_md`` is absent).
     """
     if egg.agents_md is None:
         return []
@@ -45,6 +53,9 @@ def _parse_sections(text: str) -> dict[str, Any]:
 
 def extract(egg: Egg) -> dict[str, str]:
     """Extract the per-egg AGENTS.md from the egg.
+
+    Args:
+        egg: The Egg that may contain passthrough AGENTS.md content.
 
     Returns:
         ``{"AGENTS.md": <content>}`` or empty dict if absent.
@@ -99,7 +110,7 @@ def _build_template(egg: Egg) -> str:
         lines = ["## Required Secrets\n", "Before hatching, create a `.env` file with:"]
         for s in egg.secrets.secrets:
             required = "required" if s.required_at_hatch else "optional"
-            desc = f" — {s.description}" if s.description else ""
+            desc = f": {s.description}" if s.description else ""
             lines.append(f"- `{s.name}` ({required}){desc}")
         lines.append("")
         lines.append("Generate a template: `nydus env agent.egg -o hatch.env`")
@@ -124,7 +135,7 @@ def _build_template(egg: Egg) -> str:
         for name, cfg in egg.mcp.configs.items():
             cmd = cfg.get("command", "")
             env_keys = list(cfg.get("env", {}).keys())
-            desc = f" — `{cmd}`" if cmd else ""
+            desc = f": `{cmd}`" if cmd else ""
             if env_keys:
                 desc += f" (env: {', '.join(env_keys)})"
             lines.append(f"- `{name}`{desc}")
@@ -146,14 +157,14 @@ def _build_template(egg: Egg) -> str:
         "After hatching, confirm:",
         "- Output directory contains the expected agent files",
         "- MCP server configs are present (if applicable)",
-        f"- Run `nydus inspect agent.egg` to review egg contents",
+        "- Run `nydus inspect agent.egg` to review egg contents",
     ]
     sections.append("\n".join(lines))
 
     lines = [
         "## Conventions\n",
         "- Secret placeholders look like `{{SECRET_NNN}}`. Resolve before use.",
-        "- Skills are in `skills/`. Each is standalone — do not merge.",
+        "- Skills are in `skills/`. Each is standalone. Do not merge.",
         "- Memory files in `memory/` are dated.",
     ]
     sections.append("\n".join(lines))

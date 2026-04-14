@@ -13,7 +13,16 @@ from pynydus.standards._loader import validate_against_schema
 
 
 def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationIssue]:
-    """Validate the egg's MCP configs against the spec schema."""
+    """Validate the egg's MCP configs against the spec schema.
+
+    Args:
+        egg: The Egg to validate.
+        schema: Optional JSON Schema dict. When ``None``, the schema is loaded
+            from the bundled ``mcp`` spec.
+
+    Returns:
+        List of validation issues (empty if valid or if there are no MCP configs).
+    """
     if not egg.mcp.configs:
         return []
 
@@ -29,6 +38,9 @@ def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationI
 def extract(egg: Egg) -> dict[str, str]:
     """Extract MCP config from the egg.
 
+    Args:
+        egg: The Egg containing MCP server configs.
+
     Returns:
         ``{"mcp.json": <content>}`` or empty dict if no MCP configs.
     """
@@ -42,7 +54,13 @@ def extract(egg: Egg) -> dict[str, str]:
 def generate(egg: Egg) -> dict[str, str]:
     """Generate MCP config from egg data.
 
-    For MCP this is the same as extract — configs are stored verbatim
+    For MCP this is the same as extract. Configs are stored verbatim
     and there is no generation step. Provided for interface consistency.
+
+    Args:
+        egg: The Egg containing MCP server configs.
+
+    Returns:
+        Same as :func:`extract`: ``{"mcp.json": <content>}`` or empty dict.
     """
     return extract(egg)

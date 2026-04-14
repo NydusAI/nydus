@@ -16,7 +16,16 @@ from pynydus.standards._loader import validate_against_schema
 
 
 def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationIssue]:
-    """Validate the egg's A2A agent card against the spec schema."""
+    """Validate the egg's A2A agent card against the spec schema.
+
+    Args:
+        egg: The Egg to validate.
+        schema: Optional JSON Schema dict. When ``None``, the schema is loaded
+            from the bundled ``a2a`` spec.
+
+    Returns:
+        List of validation issues (empty if valid or if the egg has no agent card).
+    """
     if egg.a2a_card is None:
         return []
 
@@ -31,6 +40,9 @@ def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationI
 
 def extract(egg: Egg) -> dict[str, str]:
     """Extract the A2A agent card from the egg.
+
+    Args:
+        egg: The Egg that may contain a passthrough A2A agent card.
 
     Returns:
         ``{"agent-card.json": <content>}`` or empty dict if absent.
@@ -69,16 +81,11 @@ def generate(egg: Egg, *, llm_fn: Any = None) -> dict[str, str]:
 
 def _build_deterministic_card(egg: Egg) -> dict[str, Any]:
     """Build an agent card using only deterministic data from the egg."""
-    name = (
-        egg.manifest.agent_name
-        or egg.manifest.agent_type.value
-    )
+    name = egg.manifest.agent_name or egg.manifest.agent_type.value
 
     description = egg.manifest.agent_description or ""
     if not description:
-        persona_records = [
-            m for m in egg.memory.memory if m.label == MemoryLabel.PERSONA
-        ]
+        persona_records = [m for m in egg.memory.memory if m.label == MemoryLabel.PERSONA]
         if persona_records:
             description = persona_records[0].text[:500]
 

@@ -193,9 +193,7 @@ class TestInspectCommand:
 class TestExtractCommand:
     def test_extract_mcp_empty(self, spawned_egg: Path, tmp_path: Path):
         out = tmp_path / "ext_mcp"
-        result = runner.invoke(
-            app, ["extract", "mcp", "--from", str(spawned_egg), "-o", str(out)]
-        )
+        result = runner.invoke(app, ["extract", "mcp", "--from", str(spawned_egg), "-o", str(out)])
         assert result.exit_code == 0
         assert "No MCP config" in result.output
 
@@ -213,27 +211,21 @@ class TestExtractCommand:
         assert result.exit_code == 0, result.output
 
         out = tmp_path / "ext_skills"
-        result = runner.invoke(
-            app, ["extract", "skills", "--from", str(egg_path), "-o", str(out)]
-        )
+        result = runner.invoke(app, ["extract", "skills", "--from", str(egg_path), "-o", str(out)])
         assert result.exit_code == 0
         assert "Extracted" in result.output
         assert any(out.rglob("SKILL.md"))
 
     def test_extract_a2a(self, spawned_egg: Path, tmp_path: Path):
         out = tmp_path / "ext_a2a"
-        result = runner.invoke(
-            app, ["extract", "a2a", "--from", str(spawned_egg), "-o", str(out)]
-        )
+        result = runner.invoke(app, ["extract", "a2a", "--from", str(spawned_egg), "-o", str(out)])
         assert result.exit_code == 0
         assert "Extracted" in result.output
         assert (out / "agent-card.json").exists()
 
     def test_extract_apm_absent(self, spawned_egg: Path, tmp_path: Path):
         out = tmp_path / "ext_apm"
-        result = runner.invoke(
-            app, ["extract", "apm", "--from", str(spawned_egg), "-o", str(out)]
-        )
+        result = runner.invoke(app, ["extract", "apm", "--from", str(spawned_egg), "-o", str(out)])
         assert result.exit_code == 0
         assert "No apm.yml" in result.output
 
@@ -257,9 +249,7 @@ class TestExtractCommand:
 
     def test_extract_all(self, spawned_egg: Path, tmp_path: Path):
         out = tmp_path / "ext_all"
-        result = runner.invoke(
-            app, ["extract", "all", "--from", str(spawned_egg), "-o", str(out)]
-        )
+        result = runner.invoke(app, ["extract", "all", "--from", str(spawned_egg), "-o", str(out)])
         assert result.exit_code == 0
         assert "Extracted" in result.output
         assert out.exists()
@@ -418,13 +408,13 @@ class TestEnvCommand:
         from datetime import UTC, datetime
 
         from pynydus.api.schemas import (
+            AgentSkill,
             Egg,
             Manifest,
             MemoryModule,
             MemoryRecord,
             SecretRecord,
             SecretsModule,
-            AgentSkill,
             SkillsModule,
         )
         from pynydus.common.enums import (

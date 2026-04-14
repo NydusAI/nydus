@@ -6,9 +6,9 @@ from pathlib import Path
 
 from pynydus.api.schemas import (
     AgentSkill,
+    McpModule,
     MemoryModule,
     MemoryRecord,
-    McpModule,
     SecretsModule,
     SkillsModule,
 )

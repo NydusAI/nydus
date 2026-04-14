@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from conftest import make_egg
 from pynydus.api.protocols import Hatcher, Spawner
 from pynydus.api.raw_types import ParseResult, RenderResult
 from pynydus.api.schemas import (
@@ -21,6 +20,7 @@ from pynydus.api.schemas import (
 )
 from pynydus.common.enums import Bucket, ModuleType
 
+from conftest import make_egg
 
 # =====================================================================
 # Deleted-field guardrails
@@ -41,6 +41,7 @@ class TestDeletedFields:
 
     def test_no_skill_record_type(self):
         from pynydus.api import schemas
+
         assert not hasattr(schemas, "SkillRecord")
 
     def test_parse_result_no_source_metadata(self):
@@ -90,7 +91,10 @@ class TestAgentSkill:
         from pynydus.api.skill_format import render_skill_md
 
         skill = AgentSkill(
-            name="greet", description="Greets users.", body="Say hello warmly.", version="1.0",
+            name="greet",
+            description="Greets users.",
+            body="Say hello warmly.",
+            version="1.0",
         )
         md = render_skill_md(skill)
         assert "greet" in md

@@ -1,6 +1,6 @@
 """Agent Skills standard: validate, extract.
 
-Skills are fully deterministic — no ``generate()`` function.
+Skills are fully deterministic (no ``generate()`` function).
 """
 
 from __future__ import annotations
@@ -13,7 +13,16 @@ from pynydus.standards._loader import validate_against_schema
 
 
 def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationIssue]:
-    """Validate each skill's frontmatter against the agentskills.io schema."""
+    """Validate each skill's frontmatter against the agentskills.io schema.
+
+    Args:
+        egg: The Egg whose skills are validated.
+        schema: Optional JSON Schema dict. When ``None``, the schema is loaded
+            from the bundled ``agentskills`` spec.
+
+    Returns:
+        List of validation issues (empty if valid or if there are no skills).
+    """
     if not egg.skills.skills:
         return []
 
@@ -49,6 +58,9 @@ def validate(egg: Egg, schema: dict[str, Any] | None = None) -> list[ValidationI
 
 def extract(egg: Egg) -> dict[str, str]:
     """Extract all skills as SKILL.md files.
+
+    Args:
+        egg: The Egg containing skill definitions.
 
     Returns:
         ``{"skills/<slug>/SKILL.md": <content>, ...}`` for each skill.

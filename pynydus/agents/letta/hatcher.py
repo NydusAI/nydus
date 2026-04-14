@@ -36,7 +36,7 @@ class LettaHatcher(Hatcher):
 
         Args:
             egg: The Egg to render.
-            output_dir: Target directory (unused; pipeline performs disk I/O).
+            output_dir: Target directory (unused, pipeline performs disk I/O).
 
         Returns:
             File dict and any warnings produced during rendering.
@@ -168,7 +168,7 @@ class LettaHatcher(Hatcher):
         if egg.manifest.agent_description:
             agent["description"] = egg.manifest.agent_description
 
-        # --- mcp_servers (Letta AgentFile; configs are raw dicts on egg.mcp) ---
+        # --- mcp_servers (Letta AgentFile, raw dicts from egg.mcp) ---
         mcp_servers: list[dict] = []
         if egg.mcp.configs:
             for name, cfg in sorted(egg.mcp.configs.items()):

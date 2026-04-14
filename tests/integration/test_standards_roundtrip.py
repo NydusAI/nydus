@@ -73,9 +73,7 @@ class TestSpawnInspectExtractRoundtrip:
 
         # extract all via CLI
         out = tmp_path / "extracted"
-        result = runner.invoke(
-            app, ["extract", "all", "--from", str(egg_path), "-o", str(out)]
-        )
+        result = runner.invoke(app, ["extract", "all", "--from", str(egg_path), "-o", str(out)])
         assert result.exit_code == 0
         assert "Extracted" in result.output
 
@@ -106,9 +104,7 @@ class TestSpawnInspectExtractRoundtrip:
 
         # extract a2a
         a2a_out = tmp_path / "a2a"
-        result = runner.invoke(
-            app, ["extract", "a2a", "--from", str(egg_path), "-o", str(a2a_out)]
-        )
+        result = runner.invoke(app, ["extract", "a2a", "--from", str(egg_path), "-o", str(a2a_out)])
         assert result.exit_code == 0
         assert (a2a_out / "agent-card.json").exists()
 
@@ -152,9 +148,7 @@ class TestApmPassthrough:
 
         # extract apm
         apm_out = tmp_path / "apm_ext"
-        result = runner.invoke(
-            app, ["extract", "apm", "--from", str(egg_path), "-o", str(apm_out)]
-        )
+        result = runner.invoke(app, ["extract", "apm", "--from", str(egg_path), "-o", str(apm_out)])
         assert result.exit_code == 0
         assert "Extracted" in result.output
 
@@ -193,9 +187,7 @@ class TestApmPassthrough:
 
         # extract apm should report not present
         apm_out = tmp_path / "no_apm"
-        result = runner.invoke(
-            app, ["extract", "apm", "--from", str(egg_path), "-o", str(apm_out)]
-        )
+        result = runner.invoke(app, ["extract", "apm", "--from", str(egg_path), "-o", str(apm_out)])
         assert result.exit_code == 0
         assert "No apm.yml" in result.output
 
@@ -212,7 +204,7 @@ class TestApmPassthrough:
         loaded = load(egg_path, include_raw=True)
 
         out_dir = tmp_path / "hatched"
-        result = hatch(
+        hatch(
             loaded,
             target=AgentType.OPENCLAW,
             output_dir=out_dir,
@@ -267,8 +259,9 @@ class TestA2AGeneration:
         assert egg.a2a_card["skills"][0]["name"] == "custom-skill"
 
     def test_a2a_generation_with_mock_llm(self):
-        from conftest import make_egg
         from pynydus.api.schemas import AgentSkill
+
+        from conftest import make_egg
 
         egg = make_egg(
             agent_name="SupportBot",

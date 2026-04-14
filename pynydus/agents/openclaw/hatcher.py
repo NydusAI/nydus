@@ -32,6 +32,8 @@ from pynydus.api.schemas import (
 )
 from pynydus.common.connector_utils import (
     date_key_from_record as _date_key_from_record,
+)
+from pynydus.common.connector_utils import (
     join_records as _join_records,
 )
 from pynydus.common.enums import MemoryLabel, SecretKind
@@ -63,7 +65,7 @@ class OpenClawHatcher(Hatcher):
 
         Args:
             egg: The Egg to render.
-            output_dir: Target directory (unused; pipeline performs disk I/O).
+            output_dir: Target directory (unused, pipeline performs disk I/O).
 
         Returns:
             File dict and any warnings produced during rendering.

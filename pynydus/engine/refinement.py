@@ -294,7 +294,6 @@ def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
     if result is None:
         return partial
 
-    # Rebuild memory list from LLM output
     new_memory: list[MemoryRecord] = []
     merge_counter = 0
 
@@ -312,7 +311,6 @@ def _refine_memory(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
             )
             continue
 
-        # Determine ID
         if len(refined.original_ids) == 1 and refined.original_ids[0] in lookup:
             record_id = refined.original_ids[0]
             partial.spawn_log.append(
@@ -397,10 +395,7 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
     lookup: dict[str, AgentSkill] = {s.metadata.get("id", s.name): s for s in skills}
 
     serialized = json.dumps(
-        [
-            {"id": s.metadata.get("id", s.name), "name": s.name, "content": s.body}
-            for s in skills
-        ],
+        [{"id": s.metadata.get("id", s.name), "name": s.name, "content": s.body} for s in skills],
         indent=2,
     )
 
@@ -427,7 +422,6 @@ def _refine_skills(partial: EggPartial, llm_config: LLMTierConfig) -> EggPartial
     if result is None:
         return partial
 
-    # Update skills from LLM output
     new_skills: list[AgentSkill] = []
     for refined in result.skills:
         original = lookup.get(refined.original_id)
@@ -662,5 +656,3 @@ def refine_hatch(
             log.append({"type": "warning", "message": warning})
 
     return result
-
-

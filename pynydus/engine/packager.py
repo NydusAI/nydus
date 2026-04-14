@@ -6,12 +6,12 @@ An .egg file is a zip archive with the canonical directory layout::
     signature.json           (optional: Ed25519 signature over modules)
     spawn_log.json           (structured spawn pipeline log)
     nydus.json               (per-skill ID/agent_type mapping)
-    mcp.json                 (MCP server configs — Claude Desktop format)
-    agent-card.json          (A2A agent card — optional)
-    apm.yml                  (passthrough from source — optional)
-    AGENTS.md                (per-egg deployment runbook — optional)
+    mcp.json                 (MCP server configs, Claude Desktop format)
+    agent-card.json          (A2A agent card, optional)
+    apm.yml                  (passthrough from source, optional)
+    AGENTS.md                (per-egg deployment runbook, optional)
     skills/<slug>/SKILL.md   (Agent Skills format: agentskills.io)
-    specs/...                (embedded spec snapshots — optional)
+    specs/...                (embedded spec snapshots, optional)
     memory.json
     secrets.json
     raw/...
@@ -243,19 +243,15 @@ def _write_egg_archive(
             json.dumps(spawn_log or [], indent=2),
         )
 
-        # Passthrough APM
         if egg.apm_yml:
             zf.writestr(APM_ENTRY, egg.apm_yml)
 
-        # A2A agent card
         if egg.a2a_card:
             zf.writestr(AGENT_CARD_ENTRY, json.dumps(egg.a2a_card, indent=2))
 
-        # Per-egg deployment runbook
         if egg.agents_md:
             zf.writestr(AGENTS_MD_ENTRY, egg.agents_md)
 
-        # Spec snapshots
         if egg.spec_snapshots:
             for spec_name, spec_content in egg.spec_snapshots.items():
                 zf.writestr(f"{SPECS_PREFIX}{spec_name}", spec_content)
@@ -326,7 +322,6 @@ def _unpack_egg_core(egg_path: Path) -> Egg:
             memory_data = json.loads(zf.read(MEMORY_ENTRY))
             secrets_data = json.loads(zf.read(SECRETS_ENTRY))
 
-            # Read optional standard artifacts
             a2a_card = None
             if AGENT_CARD_ENTRY in names:
                 try:
@@ -347,7 +342,7 @@ def _unpack_egg_core(egg_path: Path) -> Egg:
             if spec_entries:
                 spec_snapshots = {}
                 for entry in spec_entries:
-                    key = entry[len(SPECS_PREFIX):]
+                    key = entry[len(SPECS_PREFIX) :]
                     spec_snapshots[key] = zf.read(entry).decode("utf-8")
 
     except (KeyError, zipfile.BadZipFile) as e:
@@ -423,7 +418,7 @@ def read_raw_artifacts(egg_path: Path) -> dict[str, str]:
     with zipfile.ZipFile(egg_path, "r") as zf:
         for name in zf.namelist():
             if name.startswith(RAW_PREFIX) and not name.endswith("/"):
-                key = name[len(RAW_PREFIX):]
+                key = name[len(RAW_PREFIX) :]
                 artifacts[key] = zf.read(name).decode("utf-8")
     return artifacts
 

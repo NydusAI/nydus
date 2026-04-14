@@ -78,7 +78,7 @@ def _validate_standards(egg: Egg) -> list[ValidationIssue]:
     """Run per-standard validators (MCP, skills, A2A, AGENTS.md).
 
     Each standard module's ``validate()`` returns a list of issues.
-    APM is excluded — it's a pure passthrough with no validation.
+    APM is excluded (pure passthrough, no validation).
     """
     from pynydus.standards import a2a, agents_md, mcp, skills
 
