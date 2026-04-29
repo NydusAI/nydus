@@ -1,13 +1,13 @@
-# Nydus (portable state transport for AI agents)
+# Nydus: portable state transport for AI agents
 
-Use this skill when you want to **snapshot your own state** (spawn an egg),
-**restore from a snapshot** (hatch an egg), or **migrate your state** to a
-different agent framework.
+Use this skill when you need portable agent state. **Spawn** an egg to snapshot
+yourself. **Hatch** an egg to restore or migrate. **Push** and **pull** eggs
+against a registry.
 
 ## When to use
 
 - You want a portable copy of yourself: persona, skills, memory, MCP configs,
-  and secrets, packaged into a single `.egg` archive.
+  `AGENTS.md`, and related files, packaged into a single `.egg` archive.
 - You want to restore yourself (or a different agent) from an existing `.egg`.
 - You want to publish or download eggs from a hosted registry.
 
@@ -32,13 +32,16 @@ Hatching does not require gitleaks.
 
 ## Spawn (create an egg of yourself)
 
-1. Collect your state files into a directory. At minimum, include persona/identity
-   markdown and any skills, MCP configs, or memory files you want preserved.
+1. Gather state into one directory: persona or identity markdown, skills, MCP
+   configs, memory, `AGENTS.md`, and anything else you want in the egg.
 
-2. Pick the agent type whose file layout is closest to yours (see
-   **File layout by type** below).
+2. Pick the closest agent type. Use `openclaw` for markdown-heavy trees. Use
+   `letta` for AgentFile (`.af`) or `agent_state.json` layouts. Use `zeroclaw`
+   for `config.toml` and Python tool trees. See **File layout by type** and
+   **Glob patterns** below.
 
-3. Create a `Nydusfile` in that directory:
+3. Write a `Nydusfile` in that directory (change `openclaw` to `letta` or
+   `zeroclaw` when that is a better match):
 
 ```
 SOURCE openclaw ./
@@ -81,6 +84,17 @@ Use `-P` (passthrough) to replay the original redacted files verbatim instead
 of rebuilding from modules. Use `-S` to skip validation.
 
 ## File layout by type
+
+### Glob patterns (`FILE_PATTERNS`)
+
+The spawn pipeline reads sources that match these globs (see
+`pynydus/agents/<type>/spawner.py`).
+
+| Type | Patterns |
+|------|----------|
+| openclaw | `*.md`, `*.yaml`, `*.yml`, `*.json`, `*.txt`, `skills/*.md`, `memory/*.md` |
+| letta | `*.json`, `*.md`, `*.txt`, `*.yaml`, `*.yml`, `*.af`, `tools/*.py`, `archival/*.txt`, `archival/*.md`, `archival/*.json`, `.letta/*.json` |
+| zeroclaw | `*.md`, `*.yaml`, `*.yml`, `*.json`, `*.txt`, `*.toml`, `tools/*.py`, `memory/*.md` |
 
 ### openclaw (markdown-based agents)
 
@@ -156,9 +170,9 @@ require a `FROM` base egg.
 
 ## Registry (Nest)
 
-Nest is the hosted egg registry at `https://nest.nydus.ag`.
-For the full registry API, fetch `GET /skill.md` from the Nest server
-or see the [nest skill file](../nest/backend/nest/skill.md).
+Nest is the hosted egg registry at `https://nest.nydus.ag`. Machine-readable
+overview: `https://nest.nydus.ag/skill.md` (`GET /skill.md`). In a checkout,
+see [nest/backend/nest/skill.md](../nest/backend/nest/skill.md).
 
 ## More information
 

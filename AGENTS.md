@@ -14,10 +14,9 @@ spawned from one framework and hatched into another.
 
 ## Spawn yourself
 
-If you want to make a portable copy of yourself using Nydus, read
-[SKILL.md](SKILL.md) in this directory. It covers installation, creating a
-Nydusfile, spawning an egg, and hatching into a target runtime. The rest of
-this file is for agents contributing to the Nydus codebase itself.
+If you want a portable copy of yourself using Nydus, read [`SKILL.md`](SKILL.md)
+in this directory. It covers install, `Nydusfile`, spawn, hatch, and the Nest
+registry. The rest of this file is for agents contributing to the Nydus codebase.
 
 ## Commands
 
