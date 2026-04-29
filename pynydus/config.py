@@ -1,4 +1,8 @@
-"""Nydus configuration from environment variables only.
+"""Nydus configuration from environment variables and ``.env`` files.
+
+A ``.env`` file in the current directory (or any parent) is loaded
+automatically via ``python-dotenv`` so that both the CLI and the SDK
+honour the same file without manual ``export`` commands.
 
 LLM (refinement / LLM tiers):
 
@@ -18,6 +22,7 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from pynydus.llm.models import LLMTierConfig
@@ -46,6 +51,10 @@ class NydusConfig(BaseModel):
 def load_config() -> NydusConfig:
     """Load ``NydusConfig`` from ``NYDUS_*`` environment variables.
 
+    A ``.env`` file is loaded first (if present) so that CLI commands and
+    the SDK pick up the same configuration without manual ``export``.
+    Existing environment variables take precedence over ``.env`` values.
+
     Returns:
         Validated configuration. Missing LLM or registry env vars yield ``None``
         for those sections (no error).
@@ -54,6 +63,7 @@ def load_config() -> NydusConfig:
         ValueError: If ``NYDUS_LLM_TYPE`` and ``NYDUS_LLM_API_KEY`` are partially set,
             or if ``NYDUS_LLM_TYPE`` is malformed.
     """
+    load_dotenv(override=False)
     llm = _llm_from_env()
     registry = _registry_from_env()
     return NydusConfig(llm=llm, registry=registry)
