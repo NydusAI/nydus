@@ -164,34 +164,76 @@ def _apply_set(partial: EggPartial, op: MergeOp, base_dir: Path | None) -> None:
 
 
 def _apply_remove(partial: EggPartial, op: MergeOp) -> None:
-    """Remove records matching the key/selector."""
+    """Remove records matching the key/selector.
+
+    Identifier comparisons are case-insensitive but otherwise exact. For skills,
+    the key may match either the skill ``name`` or the file stem of
+    ``metadata['source_file']``. Logs a warning when no records matched.
+    """
+    matched = 0
+    key_lower = op.key.lower()
+
     if op.bucket is ModuleType.MEMORY:
         if "=" in op.key:
             selector_key, selector_val = _parse_selector(op.key)
-            partial.memory.memory = [
-                r
-                for r in partial.memory.memory
-                if not _matches_selector(r, selector_key, selector_val)
-            ]
+            kept: list[MemoryRecord] = []
+            for r in partial.memory.memory:
+                if _matches_selector(r, selector_key, selector_val):
+                    matched += 1
+                else:
+                    kept.append(r)
+            partial.memory.memory = kept
         else:
-            partial.memory.memory = [r for r in partial.memory.memory if r.id != op.key]
+            kept_mem: list[MemoryRecord] = []
+            for r in partial.memory.memory:
+                if r.id.lower() == key_lower:
+                    matched += 1
+                else:
+                    kept_mem.append(r)
+            partial.memory.memory = kept_mem
 
     elif op.bucket is ModuleType.SKILL:
-        partial.skills.skills = [
-            s
-            for s in partial.skills.skills
-            if s.name != op.key and s.metadata.get("id", "") != op.key
-        ]
+        kept_skills: list[AgentSkill] = []
+        for s in partial.skills.skills:
+            if _skill_matches_remove_key(s, key_lower):
+                matched += 1
+            else:
+                kept_skills.append(s)
+        partial.skills.skills = kept_skills
 
     elif op.bucket is ModuleType.SECRET:
-        partial.secrets.secrets = [
-            s for s in partial.secrets.secrets if s.name != op.key and s.id != op.key
-        ]
+        kept_secrets: list[SecretRecord] = []
+        for s in partial.secrets.secrets:
+            if s.name.lower() == key_lower or s.id.lower() == key_lower:
+                matched += 1
+            else:
+                kept_secrets.append(s)
+        partial.secrets.secrets = kept_secrets
+
+    if matched == 0:
+        logger.warning(
+            "REMOVE %s %r: no matching record found", op.bucket.value, op.key
+        )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _skill_matches_remove_key(skill: AgentSkill, key_lower: str) -> bool:
+    """Return True if ``skill`` should be dropped by a REMOVE skill ``key``.
+
+    Matches case-insensitively on either the skill ``name`` or the file stem
+    of ``metadata['source_file']`` (e.g. ``db-creation`` matches a skill
+    extracted from ``skills/db-creation.md``).
+    """
+    if skill.name.lower() == key_lower:
+        return True
+    source_file = skill.metadata.get("source_file", "")
+    if source_file and Path(source_file).stem.lower() == key_lower:
+        return True
+    return False
 
 
 def _resolve_value(value: str, base_dir: Path | None = None) -> str:
