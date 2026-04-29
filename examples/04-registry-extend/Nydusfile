@@ -5,7 +5,7 @@ ADD skill ./custom_summarizer/summarizer.md
 ADD memory.label=context "Working on Project X with Snowflake"
 ADD secret SNOWFLAKE_API_KEY
 ADD memory.label=persona "Prefers responses in Korean"
-REMOVE skill outdated_workflow
+REMOVE skill search
 REMOVE file *.log
 LABEL MEMORY.md context
 EXCLUDE state
