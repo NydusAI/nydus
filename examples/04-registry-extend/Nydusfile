@@ -1,7 +1,7 @@
 FROM admin/openclaw:0.0.1
 SOURCE openclaw ./my_agent/
 REDACT true
-ADD skill ./custom_summarizer/summarizer.md
+ADD skill ./custom_skills/db_creation.md
 ADD memory.label=context "Working on Project X with Snowflake"
 ADD secret SNOWFLAKE_API_KEY
 ADD memory.label=persona "Prefers responses in Korean"
